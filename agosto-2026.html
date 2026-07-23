@@ -1464,13 +1464,31 @@
           const b = h.split('?')[0]; if (m[b]) a.setAttribute('href', m[b]);
         });
       }
-      function dlFreezeClient(doc) {
-        ['.toolbar', '.theme-panel', '.download-panel', '.page-hint',
+      function dlFreezeClient(doc, scope) {
+        const isSolo = scope === 'solo';
+        const baseSelectors = ['.toolbar', '.theme-panel', '.download-panel', '.page-hint',
          'input[type="file"]', 'textarea[id^="src-"]',
          '.card-remove', '.card-add', '.week-remove', '.week-add',
          '.repeat-remove', '.repeat-add', '.li-remove', '.li-add',
-         '.placeholder-empty', '.phone-shot-overlay', 'script']
-        .forEach(s => doc.querySelectorAll(s).forEach(e => e.remove()));
+         '.placeholder-empty', '.phone-shot-overlay', 'script'];
+        if (isSolo) baseSelectors.push('.doc-pills', '.bank');
+        baseSelectors.forEach(s => doc.querySelectorAll(s).forEach(e => e.remove()));
+        if (isSolo) {
+          // Remove uncompleted story cards (default title AND default description)
+          doc.querySelectorAll('.story-report-card').forEach(card => {
+            const title = card.querySelector('.src-title');
+            const desc = card.querySelector('.src-desc');
+            const titleText = title ? title.textContent.trim() : '';
+            const descText = desc ? desc.textContent.trim() : '';
+            const isTitleDefault = !titleText || titleText === 'Texto de la story';
+            const isDescDefault = !descText || descText === 'Descripción';
+            if (isTitleDefault && isDescDefault) card.remove();
+          });
+          // Remove week blocks that have no story-report-cards left
+          doc.querySelectorAll('.rweek-block').forEach(block => {
+            if (!block.querySelector('.story-report-card')) block.remove();
+          });
+        }
         doc.querySelectorAll('[contenteditable]').forEach(e => e.removeAttribute('contenteditable'));
         doc.querySelectorAll('.doc-card').forEach(a => {
           const h = a.getAttribute('href'); if (h) a.setAttribute('href', h.split('?')[0]);
@@ -1500,13 +1518,13 @@
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 4000);
       }
-      function dlDownloadCurrent(version) {
+      function dlDownloadCurrent(version, scope) {
         const tokens = dlCurrentTokens();
         const raw = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
         const doc = new DOMParser().parseFromString(raw, 'text/html');
         doc.querySelectorAll('.toolbar-status').forEach(e => e.classList.remove('show'));
         dlBakeTokens(doc, tokens);
-        if (version === 'client') dlFreezeClient(doc); else dlFreezeCM(doc);
+        if (version === 'client') dlFreezeClient(doc, scope); else dlFreezeCM(doc);
         dlUpdateHrefs(doc, version);
         dlTrigger(dlMakeFilename(version, DL_CURRENT_PAGE), '<!DOCTYPE html>\n' + doc.documentElement.outerHTML);
       }
@@ -1518,12 +1536,12 @@
         }
         const tokens = dlCurrentTokens();
         const theme = dlCurrentTheme();
-        dlDownloadCurrent(version);
+        dlDownloadCurrent(version, 'full');
         setTimeout(() => {
           const raw = dlRecolor(templates[DL_SIBLING_KEY], theme);
           const d = new DOMParser().parseFromString(raw, 'text/html');
           dlBakeTokens(d, tokens);
-          if (version === 'client') dlFreezeClient(d); else dlFreezeCM(d);
+          if (version === 'client') dlFreezeClient(d, 'full'); else dlFreezeCM(d);
           dlUpdateHrefs(d, version);
           dlTrigger(dlMakeFilename(version, DL_SIBLING_KEY), '<!DOCTYPE html>\n' + d.documentElement.outerHTML);
         }, 400);
@@ -1531,7 +1549,7 @@
           const raw = dlRecolor(templates.indexClean, theme);
           const d = new DOMParser().parseFromString(raw, 'text/html');
           dlBakeTokens(d, tokens);
-          if (version === 'client') dlFreezeClient(d); else dlFreezeCM(d);
+          if (version === 'client') dlFreezeClient(d, 'full'); else dlFreezeCM(d);
           dlUpdateHrefs(d, version);
           dlTrigger(dlMakeFilename(version, 'index'), '<!DOCTYPE html>\n' + d.documentElement.outerHTML);
         }, 800);
@@ -1540,7 +1558,7 @@
         b.addEventListener('click', () => {
           const dl = b.getAttribute('data-dl');
           const ver = b.getAttribute('data-ver');
-          if (dl === 'solo') dlDownloadCurrent(ver);
+          if (dl === 'solo') dlDownloadCurrent(ver, 'solo');
           else dlDownloadFull(ver);
         });
       });
