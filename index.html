@@ -3762,6 +3762,25 @@
         });
       }
 
+      var MONTHS_ES_BAKE = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+      function parseDateBake(s) {
+        var parts = String(s || '').trim().split(/\s+/);
+        if (parts.length < 2) return null;
+        var idx = MONTHS_ES_BAKE.indexOf(parts[0].toLowerCase());
+        var year = parseInt(parts[1], 10);
+        if (idx < 0 || !year || isNaN(year)) return null;
+        return { monthIdx: idx, year: year, monthName: parts[0] };
+      }
+      function pad2Bake(n) { return (n < 10 ? '0' : '') + n; }
+      function computeWeekBake(info, weekN) {
+        var d = new Date(info.year, info.monthIdx, 1);
+        var dow = d.getDay();
+        var mondayOffset = dow === 0 ? 1 : (dow === 1 ? 0 : 8 - dow);
+        var start = new Date(info.year, info.monthIdx, 1 + mondayOffset + (weekN - 1) * 7);
+        if (start.getMonth() !== info.monthIdx || start.getFullYear() !== info.year) return null;
+        var end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
+        return { start: start, end: end };
+      }
       function bakeTokens(doc, tokens) {
         var t = Object.assign({}, tokens);
         if (t.date && !t.month) {
@@ -3777,6 +3796,31 @@
         var td = doc.getElementById('t-date');
         if (tc && t.client) tc.setAttribute('value', t.client);
         if (td && t.date) td.setAttribute('value', t.date);
+        // Fill week ranges based on the date's month/year
+        if (t.date) {
+          var info = parseDateBake(t.date);
+          if (info) {
+            // Detect if this doc is stories (uses "de" pattern) or posts
+            var body = doc.querySelector('body');
+            var isStories = body && (body.textContent.indexOf('Calendario de contenido') >= 0 ||
+                                     doc.title && /stor(ies|y)/i.test(doc.title));
+            var blocks = doc.querySelectorAll('.rweek-block');
+            blocks.forEach(function (block, idx) {
+              var titleEl = block.querySelector('.rweek-title');
+              var rangeEl = block.querySelector('.rweek-range');
+              if (!rangeEl) return;
+              var m = titleEl ? /(\d+)/.exec(titleEl.textContent) : null;
+              var n = m ? parseInt(m[1], 10) : (idx + 1);
+              var range = computeWeekBake(info, n);
+              if (!range) return;
+              var dStart = pad2Bake(range.start.getDate());
+              var dEnd = pad2Bake(range.end.getDate());
+              rangeEl.textContent = isStories
+                ? (dStart + ' — ' + dEnd + ' de ' + info.monthName)
+                : (dStart + ' - ' + dEnd + ' ' + info.monthName);
+            });
+          }
+        }
       }
 
       async function downloadKit(version) {

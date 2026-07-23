@@ -758,6 +758,38 @@
   })();
   (function () {
     var TOKENS_KEY = 'lacabrera-doc-tokens-v1';
+    var MONTHS_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    function parseDateStr(s) {
+      var parts = String(s || '').trim().split(/\s+/);
+      if (parts.length < 2) return null;
+      var idx = MONTHS_ES.indexOf(parts[0].toLowerCase());
+      var year = parseInt(parts[1], 10);
+      if (idx < 0 || !year || isNaN(year)) return null;
+      return { monthIdx: idx, year: year, monthName: parts[0] };
+    }
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
+    function computeWeekRange(info, weekN) {
+      var d = new Date(info.year, info.monthIdx, 1);
+      var dow = d.getDay();
+      var mondayOffset = dow === 0 ? 1 : (dow === 1 ? 0 : 8 - dow);
+      var start = new Date(info.year, info.monthIdx, 1 + mondayOffset + (weekN - 1) * 7);
+      if (start.getMonth() !== info.monthIdx || start.getFullYear() !== info.year) return null;
+      var end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
+      return { start: start, end: end };
+    }
+    function updateWeekRanges(root, info) {
+      var blocks = root.querySelectorAll('.rweek-block');
+      blocks.forEach(function (block, idx) {
+        var titleEl = block.querySelector('.rweek-title');
+        var rangeEl = block.querySelector('.rweek-range');
+        if (!rangeEl) return;
+        var m = titleEl ? /(\d+)/.exec(titleEl.textContent) : null;
+        var n = m ? parseInt(m[1], 10) : (idx + 1);
+        var range = computeWeekRange(info, n);
+        if (!range) return;
+        rangeEl.textContent = pad2(range.start.getDate()) + ' - ' + pad2(range.end.getDate()) + ' ' + info.monthName;
+      });
+    }
     function applyTokens() {
       var tokens = {};
       var params = new URLSearchParams(location.search);
@@ -778,6 +810,10 @@
         var k = el.getAttribute('data-token');
         if (tokens[k] != null && tokens[k] !== '') el.textContent = tokens[k];
       });
+      if (tokens.date) {
+        var info = parseDateStr(tokens.date);
+        if (info) updateWeekRanges(document, info);
+      }
     }
     function propagateQueryToLinks() {
       var qs = location.search;
@@ -1586,6 +1622,25 @@
         });
         return out;
       }
+      const DL_MONTHS_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+      function dlParseDate(s) {
+        const parts = String(s || '').trim().split(/\s+/);
+        if (parts.length < 2) return null;
+        const idx = DL_MONTHS_ES.indexOf(parts[0].toLowerCase());
+        const year = parseInt(parts[1], 10);
+        if (idx < 0 || !year || isNaN(year)) return null;
+        return { monthIdx: idx, year, monthName: parts[0] };
+      }
+      function dlPad2(n) { return (n < 10 ? '0' : '') + n; }
+      function dlComputeWeek(info, weekN) {
+        const d = new Date(info.year, info.monthIdx, 1);
+        const dow = d.getDay();
+        const mondayOffset = dow === 0 ? 1 : (dow === 1 ? 0 : 8 - dow);
+        const start = new Date(info.year, info.monthIdx, 1 + mondayOffset + (weekN - 1) * 7);
+        if (start.getMonth() !== info.monthIdx || start.getFullYear() !== info.year) return null;
+        const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
+        return { start, end };
+      }
       function dlBakeTokens(doc, tokens) {
         const t = Object.assign({}, tokens);
         if (t.date && !t.month) {
@@ -1600,6 +1655,25 @@
         const td = doc.getElementById('t-date');
         if (tc && t.client) tc.setAttribute('value', t.client);
         if (td && t.date) td.setAttribute('value', t.date);
+        if (t.date) {
+          const info = dlParseDate(t.date);
+          if (info) {
+            const isStories = doc.title && /stor(ies|y)/i.test(doc.title);
+            doc.querySelectorAll('.rweek-block').forEach((block, idx) => {
+              const titleEl = block.querySelector('.rweek-title');
+              const rangeEl = block.querySelector('.rweek-range');
+              if (!rangeEl) return;
+              const m = titleEl ? /(\d+)/.exec(titleEl.textContent) : null;
+              const n = m ? parseInt(m[1], 10) : (idx + 1);
+              const r = dlComputeWeek(info, n);
+              if (!r) return;
+              const s = dlPad2(r.start.getDate()), e = dlPad2(r.end.getDate());
+              rangeEl.textContent = isStories
+                ? (s + ' — ' + e + ' de ' + info.monthName)
+                : (s + ' - ' + e + ' ' + info.monthName);
+            });
+          }
+        }
       }
       function dlUpdateHrefs(doc, version) {
         const m = {
