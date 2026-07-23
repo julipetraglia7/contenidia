@@ -1131,12 +1131,21 @@
   (function () {
     var TOKENS_KEY = 'lacabrera-doc-tokens-v1';
     function applyTokens() {
-      var tokens;
-      try {
-        var saved = localStorage.getItem(TOKENS_KEY);
-        if (saved) tokens = JSON.parse(saved);
-      } catch (e) {}
-      if (!tokens) return;
+      var tokens = {};
+      var params = new URLSearchParams(location.search);
+      if (params.has('client')) tokens.client = params.get('client');
+      if (params.has('date')) tokens.date = params.get('date');
+      if (params.has('month')) tokens.month = params.get('month');
+      if (!tokens.client && !tokens.date) {
+        try {
+          var saved = localStorage.getItem(TOKENS_KEY);
+          if (saved) tokens = JSON.parse(saved) || {};
+        } catch (e) {}
+      }
+      if (tokens.date && !tokens.month) {
+        var parts = String(tokens.date).trim().split(/\s+/);
+        if (parts.length && parts[0]) tokens.month = parts[0];
+      }
       document.querySelectorAll('[data-token]').forEach(function (el) {
         var k = el.getAttribute('data-token');
         if (tokens[k] != null && tokens[k] !== '') el.textContent = tokens[k];
@@ -1204,7 +1213,7 @@
             <button type="button" class="week-remove" title="Eliminar esta semana">Eliminar semana</button>
             <div class="rweek-head">
               <div class="rweek-title" contenteditable="true" data-placeholder="Semana">Semana 1</div>
-              <div class="rweek-range" contenteditable="true" data-placeholder="xx - xx mes">xx - xx mes</div>
+              <div class="rweek-range" contenteditable="true" data-placeholder="xx - xx mes">xx - xx <span data-token="month">mes</span></div>
             </div>
             <div class="story-report-grid">
               <div class="post-report-card">
@@ -1307,7 +1316,7 @@
             <button type="button" class="week-remove" title="Eliminar esta semana">Eliminar semana</button>
             <div class="rweek-head">
               <div class="rweek-title" contenteditable="true" data-placeholder="Semana">Semana 2</div>
-              <div class="rweek-range" contenteditable="true" data-placeholder="xx - xx mes">xx - xx mes</div>
+              <div class="rweek-range" contenteditable="true" data-placeholder="xx - xx mes">xx - xx <span data-token="month">mes</span></div>
             </div>
             <div class="story-report-grid">
               <div class="post-report-card">
@@ -1410,7 +1419,7 @@
             <button type="button" class="week-remove" title="Eliminar esta semana">Eliminar semana</button>
             <div class="rweek-head">
               <div class="rweek-title" contenteditable="true" data-placeholder="Semana">Semana 3</div>
-              <div class="rweek-range" contenteditable="true" data-placeholder="xx - xx mes">xx - xx mes</div>
+              <div class="rweek-range" contenteditable="true" data-placeholder="xx - xx mes">xx - xx <span data-token="month">mes</span></div>
             </div>
             <div class="story-report-grid">
               <div class="post-report-card">
@@ -1513,7 +1522,7 @@
             <button type="button" class="week-remove" title="Eliminar esta semana">Eliminar semana</button>
             <div class="rweek-head">
               <div class="rweek-title" contenteditable="true" data-placeholder="Semana">Semana 4</div>
-              <div class="rweek-range" contenteditable="true" data-placeholder="xx - xx mes">xx - xx mes</div>
+              <div class="rweek-range" contenteditable="true" data-placeholder="xx - xx mes">xx - xx <span data-token="month">mes</span></div>
             </div>
             <div class="story-report-grid">
               <div class="post-report-card">
@@ -1668,7 +1677,7 @@
       <button type="button" class="week-remove" title="Eliminar esta semana">Eliminar semana</button>
       <div class="rweek-head">
         <div class="rweek-title" contenteditable="true" data-placeholder="Semana">Semana</div>
-        <div class="rweek-range" contenteditable="true" data-placeholder="xx - xx mes">xx - xx mes</div>
+        <div class="rweek-range" contenteditable="true" data-placeholder="xx - xx mes">xx - xx <span data-token="month">mes</span></div>
       </div>
       <div class="story-report-grid">
         <div class="card-add" title="Agregar otro post a esta semana">+ Agregar post</div>
@@ -2657,12 +2666,21 @@
   (function () {
     var TOKENS_KEY = 'lacabrera-doc-tokens-v1';
     function applyTokens() {
-      var tokens;
-      try {
-        var saved = localStorage.getItem(TOKENS_KEY);
-        if (saved) tokens = JSON.parse(saved);
-      } catch (e) {}
-      if (!tokens) return;
+      var tokens = {};
+      var params = new URLSearchParams(location.search);
+      if (params.has('client')) tokens.client = params.get('client');
+      if (params.has('date')) tokens.date = params.get('date');
+      if (params.has('month')) tokens.month = params.get('month');
+      if (!tokens.client && !tokens.date) {
+        try {
+          var saved = localStorage.getItem(TOKENS_KEY);
+          if (saved) tokens = JSON.parse(saved) || {};
+        } catch (e) {}
+      }
+      if (tokens.date && !tokens.month) {
+        var parts = String(tokens.date).trim().split(/\s+/);
+        if (parts.length && parts[0]) tokens.month = parts[0];
+      }
       document.querySelectorAll('[data-token]').forEach(function (el) {
         var k = el.getAttribute('data-token');
         if (tokens[k] != null && tokens[k] !== '') el.textContent = tokens[k];
@@ -2737,7 +2755,7 @@
           <div class="rweek-block">
             <button type="button" class="week-remove" title="Eliminar esta semana">Eliminar semana</button>
             <div class="rweek-head">
-              <div class="rweek-range" contenteditable="true" data-placeholder="xx — xx de mes">xx — xx de mes</div>
+              <div class="rweek-range" contenteditable="true" data-placeholder="xx — xx de mes">xx — xx de <span data-token="month">mes</span></div>
               <div class="rweek-objective" contenteditable="true" data-placeholder="Objetivo de la semana"></div>
               <div class="rweek-title" contenteditable="true" data-placeholder="Semana">Semana 1</div>
             </div>
@@ -2825,7 +2843,7 @@
           <div class="rweek-block">
             <button type="button" class="week-remove" title="Eliminar esta semana">Eliminar semana</button>
             <div class="rweek-head">
-              <div class="rweek-range" contenteditable="true" data-placeholder="xx — xx de mes">xx — xx de mes</div>
+              <div class="rweek-range" contenteditable="true" data-placeholder="xx — xx de mes">xx — xx de <span data-token="month">mes</span></div>
               <div class="rweek-objective" contenteditable="true" data-placeholder="Objetivo de la semana"></div>
               <div class="rweek-title" contenteditable="true" data-placeholder="Semana">Semana 2</div>
             </div>
@@ -2913,7 +2931,7 @@
           <div class="rweek-block">
             <button type="button" class="week-remove" title="Eliminar esta semana">Eliminar semana</button>
             <div class="rweek-head">
-              <div class="rweek-range" contenteditable="true" data-placeholder="xx — xx de mes">xx — xx de mes</div>
+              <div class="rweek-range" contenteditable="true" data-placeholder="xx — xx de mes">xx — xx de <span data-token="month">mes</span></div>
               <div class="rweek-objective" contenteditable="true" data-placeholder="Objetivo de la semana"></div>
               <div class="rweek-title" contenteditable="true" data-placeholder="Semana">Semana 3</div>
             </div>
@@ -3001,7 +3019,7 @@
           <div class="rweek-block">
             <button type="button" class="week-remove" title="Eliminar esta semana">Eliminar semana</button>
             <div class="rweek-head">
-              <div class="rweek-range" contenteditable="true" data-placeholder="xx — xx de mes">xx — xx de mes</div>
+              <div class="rweek-range" contenteditable="true" data-placeholder="xx — xx de mes">xx — xx de <span data-token="month">mes</span></div>
               <div class="rweek-objective" contenteditable="true" data-placeholder="Objetivo de la semana"></div>
               <div class="rweek-title" contenteditable="true" data-placeholder="Semana">Semana 4</div>
             </div>
@@ -3131,7 +3149,7 @@
     <div class="rweek-block">
       <button type="button" class="week-remove" title="Eliminar esta semana">Eliminar semana</button>
       <div class="rweek-head">
-        <div class="rweek-range" contenteditable="true" data-placeholder="xx — xx de mes">xx — xx de mes</div>
+        <div class="rweek-range" contenteditable="true" data-placeholder="xx — xx de mes">xx — xx de <span data-token="month">mes</span></div>
         <div class="rweek-objective" contenteditable="true" data-placeholder="Objetivo de la semana"></div>
         <div class="rweek-title" contenteditable="true" data-placeholder="Semana">Semana</div>
       </div>
@@ -3745,15 +3763,20 @@
       }
 
       function bakeTokens(doc, tokens) {
+        var t = Object.assign({}, tokens);
+        if (t.date && !t.month) {
+          var parts = String(t.date).trim().split(/\s+/);
+          if (parts.length && parts[0]) t.month = parts[0];
+        }
         doc.querySelectorAll('[data-token]').forEach(function (el) {
           var k = el.getAttribute('data-token');
-          if (tokens[k]) el.textContent = tokens[k];
+          if (t[k]) el.textContent = t[k];
         });
         // Bake input values so the CM version starts with the same client/date
         var tc = doc.getElementById('t-client');
         var td = doc.getElementById('t-date');
-        if (tc && tokens.client) tc.setAttribute('value', tokens.client);
-        if (td && tokens.date) td.setAttribute('value', tokens.date);
+        if (tc && t.client) tc.setAttribute('value', t.client);
+        if (td && t.date) td.setAttribute('value', t.date);
       }
 
       async function downloadKit(version) {
@@ -3839,9 +3862,14 @@
       }
 
       function applyTokens(tokens) {
+        var t = Object.assign({}, tokens);
+        if (t.date && !t.month) {
+          var parts = String(t.date).trim().split(/\s+/);
+          if (parts.length && parts[0]) t.month = parts[0];
+        }
         document.querySelectorAll('[data-token]').forEach(function (el) {
           var k = el.getAttribute('data-token');
-          if (tokens[k] != null && tokens[k] !== '') el.textContent = tokens[k];
+          if (t[k] != null && t[k] !== '') el.textContent = t[k];
         });
       }
 
