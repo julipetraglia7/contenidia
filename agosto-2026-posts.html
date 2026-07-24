@@ -590,6 +590,54 @@
     color: var(--ink);
   }
 
+  .collab-toggle {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 2;
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    border: 1px solid rgba(247,247,223,0.35);
+    background: rgba(0,0,0,0.6);
+    color: var(--ink);
+    font-size: 12px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .15s, background-color .15s;
+  }
+  .post-report-card:hover .collab-toggle,
+  .story-report-card:hover .collab-toggle { opacity: 0.7; }
+  .collab-toggle:hover { opacity: 1 !important; }
+  .post-report-card[data-collab="true"] .collab-toggle,
+  .story-report-card[data-collab="true"] .collab-toggle {
+    opacity: 1;
+    background: var(--accent);
+    border-color: var(--accent-soft);
+  }
+  .collab-pill {
+    display: none;
+    align-items: center;
+    border: 1px solid var(--accent-soft);
+    border-radius: 999px;
+    padding: 5px 10px 4px;
+    font-family: var(--font-mono);
+    font-weight: 400;
+    font-size: 9.3px;
+    line-height: 1;
+    color: var(--ink);
+    background: color-mix(in srgb, var(--accent-soft) 30%, transparent);
+    letter-spacing: 0.278px;
+    white-space: nowrap;
+    text-transform: uppercase;
+  }
+  .post-report-card[data-collab="true"] .collab-pill,
+  .story-report-card[data-collab="true"] .collab-pill { display: inline-flex; }
+
   .bank {
     width: 100%;
     margin: 40px 0 0;
@@ -699,7 +747,7 @@
   }
 
   @media print {
-    .toolbar, .card-remove, .card-add, .week-remove, .week-add, .phone-shot-overlay, .page-hint, .carousel-nav, .carousel-dots, .doc-pills { display: none !important; }
+    .toolbar, .card-remove, .card-add, .week-remove, .week-add, .phone-shot-overlay, .page-hint, .carousel-nav, .carousel-dots, .doc-pills, .collab-toggle { display: none !important; }
   }
 
   /* ---------- Responsive ---------- */
@@ -893,6 +941,7 @@
             <div class="story-report-grid">
               <div class="post-report-card">
                 <button type="button" class="card-remove" title="Eliminar post">×</button>
+                <button type="button" class="collab-toggle" title="Marcar como colaborativo">🤝</button>
                 <div class="post-placeholder" data-empty="true">
                   <img src="" alt="" hidden>
                   <div class="placeholder-empty">
@@ -908,6 +957,7 @@
                   </div>
                   <div class="src-desc" contenteditable="true" data-placeholder="copy">copy</div>
                   <div class="src-tags">
+                    <span class="collab-pill">Colaborativo</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag" contenteditable="true" data-placeholder="tag">eje</span>
@@ -916,6 +966,7 @@
               </div>
               <div class="post-report-card">
                 <button type="button" class="card-remove" title="Eliminar post">×</button>
+                <button type="button" class="collab-toggle" title="Marcar como colaborativo">🤝</button>
                 <div class="post-placeholder" data-empty="true">
                   <img src="" alt="" hidden>
                   <div class="placeholder-empty">
@@ -931,6 +982,7 @@
                   </div>
                   <div class="src-desc" contenteditable="true" data-placeholder="copy">copy</div>
                   <div class="src-tags">
+                    <span class="collab-pill">Colaborativo</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag" contenteditable="true" data-placeholder="tag">eje</span>
@@ -939,6 +991,7 @@
               </div>
               <div class="post-report-card">
                 <button type="button" class="card-remove" title="Eliminar post">×</button>
+                <button type="button" class="collab-toggle" title="Marcar como colaborativo">🤝</button>
                 <div class="post-placeholder" data-empty="true">
                   <img src="" alt="" hidden>
                   <div class="placeholder-empty">
@@ -954,6 +1007,7 @@
                   </div>
                   <div class="src-desc" contenteditable="true" data-placeholder="copy">copy</div>
                   <div class="src-tags">
+                    <span class="collab-pill">Colaborativo</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag" contenteditable="true" data-placeholder="tag">eje</span>
@@ -962,6 +1016,7 @@
               </div>
               <div class="post-report-card">
                 <button type="button" class="card-remove" title="Eliminar post">×</button>
+                <button type="button" class="collab-toggle" title="Marcar como colaborativo">🤝</button>
                 <div class="post-placeholder" data-empty="true">
                   <img src="" alt="" hidden>
                   <div class="placeholder-empty">
@@ -977,6 +1032,7 @@
                   </div>
                   <div class="src-desc" contenteditable="true" data-placeholder="copy">copy</div>
                   <div class="src-tags">
+                    <span class="collab-pill">Colaborativo</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag" contenteditable="true" data-placeholder="tag">eje</span>
@@ -996,6 +1052,7 @@
             <div class="story-report-grid">
               <div class="post-report-card">
                 <button type="button" class="card-remove" title="Eliminar post">×</button>
+                <button type="button" class="collab-toggle" title="Marcar como colaborativo">🤝</button>
                 <div class="post-placeholder" data-empty="true">
                   <img src="" alt="" hidden>
                   <div class="placeholder-empty">
@@ -1011,6 +1068,7 @@
                   </div>
                   <div class="src-desc" contenteditable="true" data-placeholder="copy">copy</div>
                   <div class="src-tags">
+                    <span class="collab-pill">Colaborativo</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag" contenteditable="true" data-placeholder="tag">eje</span>
@@ -1019,6 +1077,7 @@
               </div>
               <div class="post-report-card">
                 <button type="button" class="card-remove" title="Eliminar post">×</button>
+                <button type="button" class="collab-toggle" title="Marcar como colaborativo">🤝</button>
                 <div class="post-placeholder" data-empty="true">
                   <img src="" alt="" hidden>
                   <div class="placeholder-empty">
@@ -1034,6 +1093,7 @@
                   </div>
                   <div class="src-desc" contenteditable="true" data-placeholder="copy">copy</div>
                   <div class="src-tags">
+                    <span class="collab-pill">Colaborativo</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag" contenteditable="true" data-placeholder="tag">eje</span>
@@ -1042,6 +1102,7 @@
               </div>
               <div class="post-report-card">
                 <button type="button" class="card-remove" title="Eliminar post">×</button>
+                <button type="button" class="collab-toggle" title="Marcar como colaborativo">🤝</button>
                 <div class="post-placeholder" data-empty="true">
                   <img src="" alt="" hidden>
                   <div class="placeholder-empty">
@@ -1057,6 +1118,7 @@
                   </div>
                   <div class="src-desc" contenteditable="true" data-placeholder="copy">copy</div>
                   <div class="src-tags">
+                    <span class="collab-pill">Colaborativo</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag" contenteditable="true" data-placeholder="tag">eje</span>
@@ -1065,6 +1127,7 @@
               </div>
               <div class="post-report-card">
                 <button type="button" class="card-remove" title="Eliminar post">×</button>
+                <button type="button" class="collab-toggle" title="Marcar como colaborativo">🤝</button>
                 <div class="post-placeholder" data-empty="true">
                   <img src="" alt="" hidden>
                   <div class="placeholder-empty">
@@ -1080,6 +1143,7 @@
                   </div>
                   <div class="src-desc" contenteditable="true" data-placeholder="copy">copy</div>
                   <div class="src-tags">
+                    <span class="collab-pill">Colaborativo</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag" contenteditable="true" data-placeholder="tag">eje</span>
@@ -1099,6 +1163,7 @@
             <div class="story-report-grid">
               <div class="post-report-card">
                 <button type="button" class="card-remove" title="Eliminar post">×</button>
+                <button type="button" class="collab-toggle" title="Marcar como colaborativo">🤝</button>
                 <div class="post-placeholder" data-empty="true">
                   <img src="" alt="" hidden>
                   <div class="placeholder-empty">
@@ -1114,6 +1179,7 @@
                   </div>
                   <div class="src-desc" contenteditable="true" data-placeholder="copy">copy</div>
                   <div class="src-tags">
+                    <span class="collab-pill">Colaborativo</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag" contenteditable="true" data-placeholder="tag">eje</span>
@@ -1122,6 +1188,7 @@
               </div>
               <div class="post-report-card">
                 <button type="button" class="card-remove" title="Eliminar post">×</button>
+                <button type="button" class="collab-toggle" title="Marcar como colaborativo">🤝</button>
                 <div class="post-placeholder" data-empty="true">
                   <img src="" alt="" hidden>
                   <div class="placeholder-empty">
@@ -1137,6 +1204,7 @@
                   </div>
                   <div class="src-desc" contenteditable="true" data-placeholder="copy">copy</div>
                   <div class="src-tags">
+                    <span class="collab-pill">Colaborativo</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag" contenteditable="true" data-placeholder="tag">eje</span>
@@ -1145,6 +1213,7 @@
               </div>
               <div class="post-report-card">
                 <button type="button" class="card-remove" title="Eliminar post">×</button>
+                <button type="button" class="collab-toggle" title="Marcar como colaborativo">🤝</button>
                 <div class="post-placeholder" data-empty="true">
                   <img src="" alt="" hidden>
                   <div class="placeholder-empty">
@@ -1160,6 +1229,7 @@
                   </div>
                   <div class="src-desc" contenteditable="true" data-placeholder="copy">copy</div>
                   <div class="src-tags">
+                    <span class="collab-pill">Colaborativo</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag" contenteditable="true" data-placeholder="tag">eje</span>
@@ -1168,6 +1238,7 @@
               </div>
               <div class="post-report-card">
                 <button type="button" class="card-remove" title="Eliminar post">×</button>
+                <button type="button" class="collab-toggle" title="Marcar como colaborativo">🤝</button>
                 <div class="post-placeholder" data-empty="true">
                   <img src="" alt="" hidden>
                   <div class="placeholder-empty">
@@ -1183,6 +1254,7 @@
                   </div>
                   <div class="src-desc" contenteditable="true" data-placeholder="copy">copy</div>
                   <div class="src-tags">
+                    <span class="collab-pill">Colaborativo</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag" contenteditable="true" data-placeholder="tag">eje</span>
@@ -1202,6 +1274,7 @@
             <div class="story-report-grid">
               <div class="post-report-card">
                 <button type="button" class="card-remove" title="Eliminar post">×</button>
+                <button type="button" class="collab-toggle" title="Marcar como colaborativo">🤝</button>
                 <div class="post-placeholder" data-empty="true">
                   <img src="" alt="" hidden>
                   <div class="placeholder-empty">
@@ -1217,6 +1290,7 @@
                   </div>
                   <div class="src-desc" contenteditable="true" data-placeholder="copy">copy</div>
                   <div class="src-tags">
+                    <span class="collab-pill">Colaborativo</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag" contenteditable="true" data-placeholder="tag">eje</span>
@@ -1225,6 +1299,7 @@
               </div>
               <div class="post-report-card">
                 <button type="button" class="card-remove" title="Eliminar post">×</button>
+                <button type="button" class="collab-toggle" title="Marcar como colaborativo">🤝</button>
                 <div class="post-placeholder" data-empty="true">
                   <img src="" alt="" hidden>
                   <div class="placeholder-empty">
@@ -1240,6 +1315,7 @@
                   </div>
                   <div class="src-desc" contenteditable="true" data-placeholder="copy">copy</div>
                   <div class="src-tags">
+                    <span class="collab-pill">Colaborativo</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag" contenteditable="true" data-placeholder="tag">eje</span>
@@ -1248,6 +1324,7 @@
               </div>
               <div class="post-report-card">
                 <button type="button" class="card-remove" title="Eliminar post">×</button>
+                <button type="button" class="collab-toggle" title="Marcar como colaborativo">🤝</button>
                 <div class="post-placeholder" data-empty="true">
                   <img src="" alt="" hidden>
                   <div class="placeholder-empty">
@@ -1263,6 +1340,7 @@
                   </div>
                   <div class="src-desc" contenteditable="true" data-placeholder="copy">copy</div>
                   <div class="src-tags">
+                    <span class="collab-pill">Colaborativo</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag" contenteditable="true" data-placeholder="tag">eje</span>
@@ -1271,6 +1349,7 @@
               </div>
               <div class="post-report-card">
                 <button type="button" class="card-remove" title="Eliminar post">×</button>
+                <button type="button" class="collab-toggle" title="Marcar como colaborativo">🤝</button>
                 <div class="post-placeholder" data-empty="true">
                   <img src="" alt="" hidden>
                   <div class="placeholder-empty">
@@ -1286,6 +1365,7 @@
                   </div>
                   <div class="src-desc" contenteditable="true" data-placeholder="copy">copy</div>
                   <div class="src-tags">
+                    <span class="collab-pill">Colaborativo</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
                     <span class="src-tag" contenteditable="true" data-placeholder="tag">eje</span>
@@ -1324,6 +1404,7 @@
   <template id="story-card-template">
     <div class="post-report-card">
       <button type="button" class="card-remove" title="Eliminar post">×</button>
+                <button type="button" class="collab-toggle" title="Marcar como colaborativo">🤝</button>
       <div class="post-placeholder" data-empty="true">
         <img src="" alt="" hidden>
         <div class="placeholder-empty">
@@ -1339,6 +1420,7 @@
         </div>
         <div class="src-desc" contenteditable="true" data-placeholder="copy">copy</div>
         <div class="src-tags">
+          <span class="collab-pill">Colaborativo</span>
           <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
           <span class="src-tag filled" contenteditable="true" data-placeholder="tag">#hashtag</span>
           <span class="src-tag" contenteditable="true" data-placeholder="tag">eje</span>
@@ -1413,6 +1495,16 @@
       });
 
       root.addEventListener('click', (e) => {
+        const collabBtn = e.target.closest('.collab-toggle');
+        if (collabBtn) {
+          const card = collabBtn.closest('.post-report-card, .story-report-card');
+          if (card) {
+            card.dataset.collab = card.dataset.collab === 'true' ? 'false' : 'true';
+            persist();
+          }
+          return;
+        }
+
         const removeCard = e.target.closest('.card-remove');
         if (removeCard) {
           removeCard.closest('.post-report-card').remove();
@@ -1707,6 +1799,7 @@
          'input[type="file"]', 'textarea[id^="src-"]',
          '.card-remove', '.card-add', '.week-remove', '.week-add',
          '.repeat-remove', '.repeat-add', '.li-remove', '.li-add',
+         '.collab-toggle',
          '.placeholder-empty', '.phone-shot-overlay', 'script'];
         if (isSolo) baseSelectors.push('.doc-pills', '.bank');
         baseSelectors.forEach(s => doc.querySelectorAll(s).forEach(e => e.remove()));
@@ -1738,7 +1831,8 @@
         const head = doc.querySelector('head');
         if (head) {
           const st = doc.createElement('style');
-          st.textContent = '.post-placeholder{cursor:default;}';
+          st.textContent = '.post-placeholder{cursor:default;}' +
+            (isSolo ? ' .story-report-grid{flex-wrap:wrap;justify-content:flex-start;} .post-report-card,.story-report-card{flex:0 0 auto!important;width:calc((100% - 36px) / 4)!important;min-width:260px;max-width:320px;} @media(max-width:900px){.post-report-card,.story-report-card{width:calc((100% - 12px) / 2)!important;}} @media(max-width:600px){.post-report-card,.story-report-card{width:100%!important;}}' : '');
           head.appendChild(st);
         }
       }
