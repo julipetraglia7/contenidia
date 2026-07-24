@@ -1577,15 +1577,30 @@
       function dlCurrentTokens() {
         const t = { client: 'La Cabrera · Marbella', date: 'Julio 2026' };
         const p = new URLSearchParams(location.search);
+        const tc = document.getElementById('t-client');
+        const td = document.getElementById('t-date');
+        const dcClient = document.querySelector('[data-token="client"]');
+        const dcDate = document.querySelector('[data-token="date"]');
+        // Priority: URL > input value > baked DOM textContent > default
         if (p.has('client')) t.client = p.get('client');
+        else if (tc && tc.value) t.client = tc.value;
+        else if (dcClient && dcClient.textContent.trim()) t.client = dcClient.textContent.trim();
         if (p.has('date')) t.date = p.get('date');
+        else if (td && td.value) t.date = td.value;
+        else if (dcDate && dcDate.textContent.trim()) t.date = dcDate.textContent.trim();
         return t;
       }
       function dlCurrentTheme() {
         const th = { bg: '#191919', card: '#211a1a', border: '#5a3a38', ink: '#f7f7df', accent: '#a91917', accentsoft: '#d28379' };
         const p = new URLSearchParams(location.search);
+        const V = { bg: '--bg', card: '--card', border: '--border', ink: '--ink', accent: '--accent', accentsoft: '--accent-soft' };
+        const rootStyle = document.documentElement.style;
         Object.keys(th).forEach(k => {
           if (p.has(k)) { const v = p.get(k); th[k] = v.indexOf('#') === 0 ? v : '#' + v; }
+          else {
+            const inline = rootStyle.getPropertyValue(V[k]);
+            if (inline && inline.trim()) th[k] = inline.trim();
+          }
         });
         return th;
       }
