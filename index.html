@@ -5,19 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Planificación de contenidos — Índice</title>
 <script>
-  // Session-only localStorage: el estado se resetea al recargar cualquier página.
+  // Session-scoped localStorage: sobrevive navegación entre pills, se resetea al abrir el índice.
+  // Guardamos referencia al localStorage REAL para funcionalidades que sí requieren persistencia (paletas).
   (function () {
-    var m = {};
+    try { window.__realLocalStorage = window.localStorage; } catch (e) {}
+    var real = window.sessionStorage;
     var stub = {
-      setItem: function (k, v) { m[k] = String(v); },
-      getItem: function (k) { return Object.prototype.hasOwnProperty.call(m, k) ? m[k] : null; },
-      removeItem: function (k) { delete m[k]; },
-      clear: function () { m = {}; },
-      key: function (i) { return Object.keys(m)[i] || null; }
+      setItem: function (k, v) { try { real.setItem(k, String(v)); } catch (e) {} },
+      getItem: function (k) { try { return real.getItem(k); } catch (e) { return null; } },
+      removeItem: function (k) { try { real.removeItem(k); } catch (e) {} },
+      clear: function () { try { real.clear(); } catch (e) {} },
+      key: function (i) { try { return real.key(i); } catch (e) { return null; } }
     };
-    Object.defineProperty(stub, 'length', { get: function () { return Object.keys(m).length; } });
+    Object.defineProperty(stub, 'length', { get: function () { try { return real.length; } catch (e) { return 0; } } });
     try { Object.defineProperty(window, 'localStorage', { value: stub, configurable: true }); }
     catch (e) { try { window.localStorage = stub; } catch (e2) {} }
+    // El índice resetea la sesión al cargar — así arranca en limpio siempre.
+    try { real.clear(); } catch (e) {}
   })();
 </script>
 <style>
@@ -324,6 +328,88 @@
   }
   .theme-status.show { opacity: 0.55; }
 
+  .palette-save-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 18px;
+    margin-bottom: 14px;
+  }
+  .palette-save-row button {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--accent-soft);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background-color .15s, color .15s;
+  }
+  .palette-save-row button:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--ink); }
+
+  .palette-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .palette-chip {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: transparent;
+    cursor: pointer;
+    transition: border-color .15s, background-color .15s;
+  }
+  .palette-chip:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .palette-chip .swatch-row {
+    display: flex;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+  .palette-chip .swatch-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1px solid rgba(247,247,223,0.15);
+  }
+  .palette-chip .palette-chip-name {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink);
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .palette-chip .palette-chip-delete {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--accent-soft);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0 4px;
+    opacity: 0.5;
+    transition: opacity .15s, color .15s;
+  }
+  .palette-chip .palette-chip-delete:hover { opacity: 1; color: var(--accent); }
+  .palette-list-empty {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent-soft);
+    opacity: 0.6;
+    padding: 12px 0;
+    text-align: center;
+  }
+
   @media print {
     .toolbar { display: none !important; }
   }
@@ -386,6 +472,14 @@
         </span>
         <span class="doc-arrow">→</span>
       </a>
+      <a class="doc-card" href="agosto-2026-tiktok.html" data-doc="3">
+        <span class="doc-num">03</span>
+        <span class="doc-info">
+          <span class="doc-title" contenteditable="true" data-placeholder="Título del documento">TikTok</span>
+          <span class="doc-desc" contenteditable="true" data-placeholder="Descripción">Calendario semana a semana de TikTok: pieza creativa, día, copy, hashtags y eje.</span>
+        </span>
+        <span class="doc-arrow">→</span>
+      </a>
     </div>
 
    </div>
@@ -414,6 +508,17 @@
         <button type="button" id="btn-reset-theme">Restablecer colores</button>
         <span class="theme-status" id="theme-status">Guardado</span>
       </div>
+    </div>
+
+    <div class="theme-panel" id="panel-palettes">
+      <h2>Paletas guardadas</h2>
+      <div class="hint">Guardá la paleta actual con un nombre (por defecto usa el nombre del cliente). Se persiste entre sesiones — sobrevive al cerrar el navegador. Click en una paleta para aplicarla al instante.</div>
+      <div class="palette-save-row">
+        <input type="text" id="palette-name" class="hex-input" placeholder="Nombre (ej: La Cabrera)" spellcheck="false" autocomplete="off" style="flex:1; min-width:180px;">
+        <button type="button" id="btn-save-palette">Guardar paleta actual</button>
+        <span class="theme-status" id="palette-status">Guardado</span>
+      </div>
+      <div class="palette-list" id="palette-list"></div>
     </div>
 
     <div class="theme-panel" id="panel-downloads">
@@ -3753,7 +3858,8 @@
         var mapping = {
           'index.html': makeFilename(version, 'index'),
           'agosto-2026-posts.html': makeFilename(version, 'posts'),
-          'agosto-2026.html': makeFilename(version, 'stories')
+          'agosto-2026.html': makeFilename(version, 'stories'),
+          'agosto-2026-tiktok.html': makeFilename(version, 'tiktok')
         };
         doc.querySelectorAll('a[href]').forEach(function (a) {
           var href = a.getAttribute('href');
@@ -3846,7 +3952,8 @@
         // no los <textarea> embebidos que puedan estar desactualizados.
         var fetchTargets = [
           { page: 'posts', file: 'agosto-2026-posts.html', srcId: 'src-posts' },
-          { page: 'stories', file: 'agosto-2026.html', srcId: 'src-stories' }
+          { page: 'stories', file: 'agosto-2026.html', srcId: 'src-stories' },
+          { page: 'tiktok', file: 'agosto-2026-tiktok.html', srcId: null }
         ];
         for (var i = 0; i < fetchTargets.length; i++) {
           (function (spec, idx) {
@@ -3854,7 +3961,7 @@
               var raw = null;
               try { raw = await fetch(spec.file).then(function (r) { return r.text(); }); }
               catch (e) { /* fallback abajo */ }
-              if (!raw) {
+              if (!raw && spec.srcId) {
                 var srcEl = document.getElementById(spec.srcId);
                 if (srcEl) raw = srcEl.value;
               }
@@ -3943,6 +4050,121 @@
       tClient.addEventListener('input', persistTokens);
       tDate.addEventListener('input', persistTokens);
       loadTokens();
+
+      // ---------- Paletas guardadas (persistidas en localStorage REAL) ----------
+      var PALETTES_KEY = 'contenidia-palettes-v1';
+      var palList = document.getElementById('palette-list');
+      var palNameInput = document.getElementById('palette-name');
+      var btnSavePalette = document.getElementById('btn-save-palette');
+      var palStatus = document.getElementById('palette-status');
+      var palStatusTimer = null;
+
+      function palRealStore() {
+        return (typeof window.__realLocalStorage !== 'undefined' && window.__realLocalStorage) ? window.__realLocalStorage : null;
+      }
+      function palLoad() {
+        var store = palRealStore();
+        if (!store) return [];
+        try {
+          var raw = store.getItem(PALETTES_KEY);
+          if (raw) return JSON.parse(raw) || [];
+        } catch (e) {}
+        return [];
+      }
+      function palSave(list) {
+        var store = palRealStore();
+        if (!store) return;
+        try { store.setItem(PALETTES_KEY, JSON.stringify(list)); } catch (e) {}
+      }
+      function palFlash(msg) {
+        if (!palStatus) return;
+        palStatus.textContent = msg;
+        palStatus.classList.add('show');
+        clearTimeout(palStatusTimer);
+        palStatusTimer = setTimeout(function () { palStatus.classList.remove('show'); }, 1600);
+      }
+      function palRender() {
+        if (!palList) return;
+        var list = palLoad();
+        palList.innerHTML = '';
+        if (!list.length) {
+          var empty = document.createElement('div');
+          empty.className = 'palette-list-empty';
+          empty.textContent = 'Todavía no guardaste ninguna paleta.';
+          palList.appendChild(empty);
+          return;
+        }
+        list.forEach(function (p) {
+          var chip = document.createElement('div');
+          chip.className = 'palette-chip';
+          chip.setAttribute('data-id', p.id);
+          chip.title = 'Click para aplicar';
+
+          var row = document.createElement('div');
+          row.className = 'swatch-row';
+          ['bg', 'card', 'border', 'ink', 'accent', 'accentsoft'].forEach(function (k) {
+            var dot = document.createElement('span');
+            dot.className = 'swatch-dot';
+            dot.style.background = p.colors[k] || '#000';
+            row.appendChild(dot);
+          });
+
+          var name = document.createElement('div');
+          name.className = 'palette-chip-name';
+          name.textContent = p.name || '(sin nombre)';
+
+          var del = document.createElement('button');
+          del.type = 'button';
+          del.className = 'palette-chip-delete';
+          del.title = 'Eliminar paleta';
+          del.textContent = '×';
+          del.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (!confirm('¿Eliminar la paleta "' + (p.name || '') + '"?')) return;
+            var current = palLoad().filter(function (x) { return x.id !== p.id; });
+            palSave(current);
+            palRender();
+            palFlash('Eliminada');
+          });
+
+          chip.appendChild(row);
+          chip.appendChild(name);
+          chip.appendChild(del);
+          chip.addEventListener('click', function () {
+            Object.keys(inputs).forEach(function (k) {
+              if (inputs[k] && p.colors[k]) inputs[k].value = p.colors[k];
+            });
+            persistTheme();
+            palFlash('Aplicada');
+          });
+          palList.appendChild(chip);
+        });
+      }
+      function palSaveCurrent() {
+        var name = (palNameInput.value || tClient.value || '').trim();
+        if (!name) { palFlash('Falta nombre'); return; }
+        var list = palLoad();
+        // Si ya existe una con ese nombre, la sobrescribo. Sino, la agrego al final.
+        var existing = list.find(function (x) { return (x.name || '').toLowerCase() === name.toLowerCase(); });
+        var colors = currentTheme();
+        if (existing) {
+          existing.colors = colors;
+          palFlash('Actualizada');
+        } else {
+          list.push({ id: 'p' + Date.now() + Math.random().toString(36).slice(2, 6), name: name, colors: colors });
+          palFlash('Guardada');
+        }
+        palSave(list);
+        palRender();
+        palNameInput.value = '';
+      }
+
+      if (btnSavePalette) btnSavePalette.addEventListener('click', palSaveCurrent);
+      // Cuando el cliente cambia, prellenamos el input del nombre para que sea fácil guardar la paleta del cliente actual.
+      tClient.addEventListener('input', function () {
+        if (palNameInput && !palNameInput.value) palNameInput.placeholder = 'Nombre (ej: ' + (tClient.value || 'La Cabrera') + ')';
+      });
+      palRender();
     })();
   </script>
 </body>

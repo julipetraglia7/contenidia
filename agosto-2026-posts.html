@@ -5,16 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agosto 2026 — Posts</title>
 <script>
+  // Session-scoped: sobrevive navegación entre pills (posts ↔ stories ↔ tiktok), se resetea al volver al índice.
   (function () {
-    var m = {};
+    try { window.__realLocalStorage = window.localStorage; } catch (e) {}
+    var real = window.sessionStorage;
     var stub = {
-      setItem: function (k, v) { m[k] = String(v); },
-      getItem: function (k) { return Object.prototype.hasOwnProperty.call(m, k) ? m[k] : null; },
-      removeItem: function (k) { delete m[k]; },
-      clear: function () { m = {}; },
-      key: function (i) { return Object.keys(m)[i] || null; }
+      setItem: function (k, v) { try { real.setItem(k, String(v)); } catch (e) {} },
+      getItem: function (k) { try { return real.getItem(k); } catch (e) { return null; } },
+      removeItem: function (k) { try { real.removeItem(k); } catch (e) {} },
+      clear: function () { try { real.clear(); } catch (e) {} },
+      key: function (i) { try { return real.key(i); } catch (e) { return null; } }
     };
-    Object.defineProperty(stub, 'length', { get: function () { return Object.keys(m).length; } });
+    Object.defineProperty(stub, 'length', { get: function () { try { return real.length; } catch (e) { return 0; } } });
     try { Object.defineProperty(window, 'localStorage', { value: stub, configurable: true }); }
     catch (e) { try { window.localStorage = stub; } catch (e2) {} }
   })();
@@ -866,7 +868,7 @@
     function propagateQueryToLinks() {
       var qs = location.search;
       if (!qs) return;
-      var siblings = ['index.html', 'agosto-2026-posts.html', 'agosto-2026.html'];
+      var siblings = ['index.html', 'agosto-2026-posts.html', 'agosto-2026.html', 'agosto-2026-tiktok.html'];
       document.querySelectorAll('a[href]').forEach(function (a) {
         var href = a.getAttribute('href');
         if (!href) return;
@@ -903,6 +905,7 @@
         <a href="index.html" class="doc-pill">Índice</a>
         <a href="agosto-2026-posts.html" class="doc-pill active">Posts</a>
         <a href="agosto-2026.html" class="doc-pill">Stories</a>
+        <a href="agosto-2026-tiktok.html" class="doc-pill">TikTok</a>
       </nav>
 
       <div class="page-header">
@@ -1698,12 +1701,13 @@
       }
       async function dlFetchTemplates() {
         try {
-          const [posts, stories, indexClean] = await Promise.all([
+          const [posts, stories, tiktok, indexClean] = await Promise.all([
             fetch('agosto-2026-posts.html').then(r => r.text()),
             fetch('agosto-2026.html').then(r => r.text()),
+            fetch('agosto-2026-tiktok.html').then(r => r.text()),
             fetch('index.html').then(r => r.text())
           ]);
-          return { posts, stories, indexClean };
+          return { posts, stories, tiktok, indexClean };
         } catch (e) { return null; }
       }
       function dlSlugify(s) {
@@ -1786,7 +1790,8 @@
         const m = {
           'index.html': dlMakeFilename(version, 'index'),
           'agosto-2026-posts.html': dlMakeFilename(version, 'posts'),
-          'agosto-2026.html': dlMakeFilename(version, 'stories')
+          'agosto-2026.html': dlMakeFilename(version, 'stories'),
+          'agosto-2026-tiktok.html': dlMakeFilename(version, 'tiktok')
         };
         doc.querySelectorAll('a[href]').forEach(a => {
           const h = a.getAttribute('href'); if (!h) return;
@@ -1867,22 +1872,22 @@
         const tokens = dlCurrentTokens();
         const theme = dlCurrentTheme();
         dlDownloadCurrent(version, 'full');
-        setTimeout(() => {
-          const raw = dlRecolor(templates[DL_SIBLING_KEY], theme);
-          const d = new DOMParser().parseFromString(raw, 'text/html');
-          dlBakeTokens(d, tokens);
-          if (version === 'client') dlFreezeClient(d, 'full'); else dlFreezeCM(d);
-          dlUpdateHrefs(d, version);
-          dlTrigger(dlMakeFilename(version, DL_SIBLING_KEY), '<!DOCTYPE html>\n' + d.documentElement.outerHTML);
-        }, 400);
-        setTimeout(() => {
-          const raw = dlRecolor(templates.indexClean, theme);
-          const d = new DOMParser().parseFromString(raw, 'text/html');
-          dlBakeTokens(d, tokens);
-          if (version === 'client') dlFreezeClient(d, 'full'); else dlFreezeCM(d);
-          dlUpdateHrefs(d, version);
-          dlTrigger(dlMakeFilename(version, 'index'), '<!DOCTYPE html>\n' + d.documentElement.outerHTML);
-        }, 800);
+        const siblings = [
+          { key: 'posts', page: 'posts' },
+          { key: 'stories', page: 'stories' },
+          { key: 'tiktok', page: 'tiktok' },
+          { key: 'indexClean', page: 'index' }
+        ].filter(s => s.page !== DL_CURRENT_PAGE);
+        siblings.forEach((sib, i) => {
+          setTimeout(() => {
+            const raw = dlRecolor(templates[sib.key], theme);
+            const d = new DOMParser().parseFromString(raw, 'text/html');
+            dlBakeTokens(d, tokens);
+            if (version === 'client') dlFreezeClient(d, 'full'); else dlFreezeCM(d);
+            dlUpdateHrefs(d, version);
+            dlTrigger(dlMakeFilename(version, sib.page), '<!DOCTYPE html>\n' + d.documentElement.outerHTML);
+          }, (i + 1) * 400);
+        });
       }
       document.querySelectorAll('#panel-downloads button[data-dl]').forEach(b => {
         b.addEventListener('click', () => {
