@@ -1329,6 +1329,19 @@
         clearTimeout(saveTimer);
         saveTimer = setTimeout(persist, 500);
       }
+      function flushSave() {
+        if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+        try { localStorage.setItem(STORAGE_KEY, root.innerHTML); } catch (e) {}
+      }
+      window.addEventListener('beforeunload', flushSave);
+      window.addEventListener('pagehide', flushSave);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSave(); });
+      document.addEventListener('click', (e) => {
+        const a = e.target.closest('a[href]');
+        if (!a) return;
+        const href = a.getAttribute('href') || '';
+        if (/^(index|agosto-2026|agosto-2026-posts|agosto-2026-tiktok)\.html/.test(href)) flushSave();
+      }, true);
 
       function restore() {
         try {
