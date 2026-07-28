@@ -1181,7 +1181,7 @@
 
   <script>
     (function () {
-      const STORAGE_KEY = 'contenido-calendario-agosto2026-v1';
+      const STORAGE_KEY = 'contenido-calendario-agosto2026-v2';
       const root = document.getElementById('calendar-root');
       const statusEl = document.getElementById('toolbar-status');
       const imageInput = document.getElementById('image-input');
@@ -1227,7 +1227,13 @@
       function restore() {
         try {
           const saved = localStorage.getItem(STORAGE_KEY);
-          if (saved) root.innerHTML = saved;
+          if (!saved) return;
+          // Descartar contenido de una versión vieja del layout (con campos que ya no existen).
+          if (/src-title|src-desc|Texto de la story|Descripción|EJE\s*·\s*OBJETIVO|sticker o CTA|eje temático/.test(saved)) {
+            localStorage.removeItem(STORAGE_KEY);
+            return;
+          }
+          root.innerHTML = saved;
         } catch (e) { /* no-op */ }
       }
 
