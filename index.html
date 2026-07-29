@@ -5,23 +5,43 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Planificación de contenidos — Índice</title>
 <script>
-  // Session-scoped localStorage: sobrevive navegación entre pills, se resetea al abrir el índice.
-  // Guardamos referencia al localStorage REAL para funcionalidades que sí requieren persistencia (paletas).
+  // Session persistente: sobrevive navegación entre pills. Escribe a sessionStorage + localStorage con prefijo.
+  // Guardamos referencia al localStorage REAL para funcionalidades que persisten (paletas, carpetas).
   (function () {
     try { window.__realLocalStorage = window.localStorage; } catch (e) {}
-    var real = window.sessionStorage;
+    var session = window.sessionStorage;
+    var real = window.__realLocalStorage;
+    var PREFIX = 'contenidia:';
+    window.__contenidiaSessionPrefix = PREFIX;
     var stub = {
-      setItem: function (k, v) { try { real.setItem(k, String(v)); } catch (e) {} },
-      getItem: function (k) { try { return real.getItem(k); } catch (e) { return null; } },
-      removeItem: function (k) { try { real.removeItem(k); } catch (e) {} },
-      clear: function () { try { real.clear(); } catch (e) {} },
-      key: function (i) { try { return real.key(i); } catch (e) { return null; } }
+      setItem: function (k, v) {
+        var s = String(v);
+        try { session.setItem(k, s); } catch (e) {}
+        try { real.setItem(PREFIX + k, s); } catch (e) {}
+      },
+      getItem: function (k) {
+        try { var v = session.getItem(k); if (v != null) return v; } catch (e) {}
+        try { return real.getItem(PREFIX + k); } catch (e) { return null; }
+      },
+      removeItem: function (k) {
+        try { session.removeItem(k); } catch (e) {}
+        try { real.removeItem(PREFIX + k); } catch (e) {}
+      },
+      clear: function () {
+        try { session.clear(); } catch (e) {}
+        try {
+          for (var i = real.length - 1; i >= 0; i--) {
+            var kk = real.key(i);
+            if (kk && kk.indexOf(PREFIX) === 0) real.removeItem(kk);
+          }
+        } catch (e) {}
+      },
+      key: function (i) { try { return session.key(i); } catch (e) { return null; } }
     };
-    Object.defineProperty(stub, 'length', { get: function () { try { return real.length; } catch (e) { return 0; } } });
+    Object.defineProperty(stub, 'length', { get: function () { try { return session.length; } catch (e) { return 0; } } });
     try { Object.defineProperty(window, 'localStorage', { value: stub, configurable: true }); }
     catch (e) { try { window.localStorage = stub; } catch (e2) {} }
-    // El índice resetea la sesión al cargar — así arranca en limpio siempre.
-    try { real.clear(); } catch (e) {}
+    // La sesión persiste entre navegación — se resetea solo con "+ Nueva planificación" o al cargar carpeta.
   })();
 </script>
 <style>
@@ -410,6 +430,141 @@
     text-align: center;
   }
 
+  .planning-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .planning-chip {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: transparent;
+    transition: border-color .15s, background-color .15s;
+  }
+  .planning-chip:hover { border-color: var(--accent); }
+  .planning-chip .swatch-row { display: flex; gap: 3px; flex-shrink: 0; }
+  .planning-chip .swatch-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    border: 1px solid rgba(247,247,223,0.15);
+  }
+  .planning-chip .planning-info {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    overflow: hidden;
+  }
+  .planning-chip .planning-name {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .planning-chip .planning-meta {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--accent-soft);
+    opacity: 0.8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .planning-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .planning-actions button {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--accent-soft);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: background-color .15s, color .15s;
+  }
+  .planning-actions button:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--ink); }
+  .planning-actions .planning-delete { color: var(--accent-soft); opacity: 0.6; }
+  .planning-actions .planning-delete:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); opacity: 1; }
+  @media (max-width: 600px) {
+    .planning-chip { flex-wrap: wrap; }
+    .planning-actions { width: 100%; }
+    .planning-actions button { flex: 1 1 auto; text-align: center; }
+  }
+
+  .dl-picker {
+    margin-top: 18px;
+    padding: 16px 18px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--accent) 4%, transparent);
+  }
+  .dl-picker-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--accent-soft);
+    margin-bottom: 12px;
+  }
+  .dl-picker-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  .dl-picker-options label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink);
+    cursor: pointer;
+    user-select: none;
+  }
+  .dl-picker-options input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .dl-picker-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .dl-picker-actions button {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--accent-soft);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background-color .15s, color .15s;
+  }
+  .dl-picker-actions button:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--ink); }
+  .dl-picker-actions .dl-picker-cancel { opacity: 0.7; }
+
   @media print {
     .toolbar { display: none !important; }
   }
@@ -521,12 +676,39 @@
       <div class="palette-list" id="palette-list"></div>
     </div>
 
+    <div class="theme-panel" id="panel-plannings">
+      <h2>Carpetas de clientes</h2>
+      <div class="hint">Guardá la planificación actual (posts + stories + TikTok + cliente + fecha + colores) en una carpeta. Después la cargás cuando quieras seguir editando, o descargás directo la versión cliente. Las carpetas persisten entre sesiones. Ojo: si las cards tienen imágenes muy pesadas, podés llegar al límite del navegador.</div>
+      <div class="palette-save-row">
+        <input type="text" id="planning-name" class="hex-input" placeholder="Nombre (ej: La Cabrera — Agosto 2026)" spellcheck="false" autocomplete="off" style="flex:1; min-width:220px;">
+        <button type="button" id="btn-save-planning">Guardar planificación actual</button>
+        <button type="button" id="btn-new-planning" title="Descartar sesión actual y arrancar limpio">+ Nueva planificación</button>
+        <span class="theme-status" id="planning-status">Guardado</span>
+      </div>
+      <div class="planning-list" id="planning-list"></div>
+    </div>
+
     <div class="theme-panel" id="panel-downloads">
       <h2>Descargar planificación</h2>
-      <div class="hint">Dos versiones del kit (índice + 3 documentos) usando los datos y colores actuales. La versión del cliente es estática y no se puede modificar. La versión del CM permite editar contenidos e imágenes, útil para aplicar el feedback del cliente.</div>
+      <div class="hint">Descargá secciones individuales o combinaciones personalizadas. Todo se congela como versión cliente con los datos y colores actuales.</div>
       <div class="theme-actions">
-        <button type="button" id="btn-download-client" title="Kit completo (índice + posts + stories) congelado, sin edición de textos ni imágenes.">Descargar versión cliente (completa)</button>
-        <button type="button" id="btn-download-cm" title="Kit completo (índice + posts + stories) con contenidos e imágenes editables, sin panel de colores ni reseteo.">Descargar versión CM (completa)</button>
+        <button type="button" id="btn-dl-only-posts">Solo posts</button>
+        <button type="button" id="btn-dl-only-stories">Solo stories</button>
+        <button type="button" id="btn-dl-only-tiktok">Solo TikTok</button>
+        <button type="button" id="btn-dl-custom">Descargar selección…</button>
+      </div>
+      <div class="dl-picker" id="dl-picker" hidden>
+        <div class="dl-picker-title">Elegí qué descargar:</div>
+        <div class="dl-picker-options">
+          <label><input type="checkbox" data-section="index" checked> Índice</label>
+          <label><input type="checkbox" data-section="posts" checked> Posts</label>
+          <label><input type="checkbox" data-section="stories" checked> Stories</label>
+          <label><input type="checkbox" data-section="tiktok" checked> TikTok</label>
+        </div>
+        <div class="dl-picker-actions">
+          <button type="button" id="btn-dl-picker-go">Descargar seleccionados</button>
+          <button type="button" id="btn-dl-picker-cancel" class="dl-picker-cancel">Cancelar</button>
+        </div>
       </div>
     </div>
 
@@ -3930,7 +4112,51 @@
         }
       }
 
-      async function downloadKit(version) {
+      // Trim adicional cuando se descarga un doc SOLO (sin siblings): saca pills, bank, cards vacías, y aplica ancho fijo.
+      function applySoloClientTrim(doc, page) {
+        doc.querySelectorAll('.doc-pills, .bank').forEach(function (el) { el.remove(); });
+        doc.querySelectorAll('.post-report-card').forEach(function (card) {
+          var ph = card.querySelector('.post-placeholder');
+          var isPhEmpty = !ph || ph.getAttribute('data-empty') === 'true' || !ph.querySelector('img[src]:not([src=""])');
+          var desc = card.querySelector('.src-desc');
+          var descText = desc ? desc.textContent.trim() : '';
+          var isDescDefault = !descText || descText === 'copy';
+          if (isPhEmpty && isDescDefault) card.remove();
+        });
+        doc.querySelectorAll('.story-report-card').forEach(function (card) {
+          var day = card.querySelector('.day');
+          var dayText = day ? day.textContent.trim() : '';
+          var isDayDefault = !dayText || /^DÍA\s*·\s*XX\/X$/i.test(dayText);
+          if (isDayDefault) card.remove();
+        });
+        doc.querySelectorAll('.rweek-block').forEach(function (block) {
+          if (!block.querySelector('.post-report-card, .story-report-card')) block.remove();
+        });
+        var head = doc.querySelector('head');
+        if (head) {
+          var st = doc.createElement('style');
+          st.textContent = '.story-report-grid{flex-wrap:wrap;justify-content:flex-start;} .post-report-card,.story-report-card{flex:0 0 auto!important;width:calc((100% - 36px) / 4)!important;min-width:260px;max-width:320px;} @media(max-width:900px){.post-report-card,.story-report-card{width:calc((100% - 12px) / 2)!important;}} @media(max-width:600px){.post-report-card,.story-report-card{width:100%!important;}}';
+          head.appendChild(st);
+        }
+      }
+
+      // Cuando la selección tiene VARIAS páginas pero no incluye alguna, quita los pills a los excluidos así no quedan links 404.
+      function trimPillsToIncluded(doc, includedPages) {
+        var fileByPage = {
+          index: 'index.html',
+          posts: 'agosto-2026-posts.html',
+          stories: 'agosto-2026.html',
+          tiktok: 'agosto-2026-tiktok.html'
+        };
+        doc.querySelectorAll('.doc-pills a[href]').forEach(function (a) {
+          var href = (a.getAttribute('href') || '').split('?')[0];
+          var page = Object.keys(fileByPage).find(function (k) { return fileByPage[k] === href; });
+          if (page && includedPages.indexOf(page) < 0) a.remove();
+        });
+      }
+
+      async function downloadPages(pagesToInclude) {
+        var version = 'client';
         var theme = currentTheme();
         var tokens = currentTokens();
         Object.keys(inputs).forEach(function (k) {
@@ -3938,29 +4164,43 @@
           if (hexInputs[k]) hexInputs[k].setAttribute('value', hexInputs[k].value);
         });
 
-        var indexRaw = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
-        var indexDoc = new DOMParser().parseFromString(indexRaw, 'text/html');
-        indexDoc.querySelectorAll('.toolbar-status, .theme-status').forEach(function (el) { el.classList.remove('show'); });
-        bakeTokens(indexDoc, tokens);
-        if (version === 'client') { freezeCopyClient(indexDoc); } else { freezeCopyCM(indexDoc); }
-        updateKitHrefs(indexDoc, version);
-        triggerDownload(makeFilename(version, 'index'), '<!DOCTYPE html>\n' + indexDoc.documentElement.outerHTML);
+        // Leemos el contenido de sesión (edits actuales) vía shim → sessionStorage con fallback a localStorage prefijado.
+        var sessionContent = {
+          posts: null, stories: null, tiktok: null
+        };
+        try {
+          sessionContent.posts = localStorage.getItem(DOC_KEYS.posts);
+          sessionContent.stories = localStorage.getItem(DOC_KEYS.stories);
+          sessionContent.tiktok = localStorage.getItem(DOC_KEYS.tiktok);
+        } catch (e) {}
 
-        flashTheme('Descargando versión ' + (version === 'client' ? 'cliente' : 'CM') + '…');
+        var docPagesIncluded = pagesToInclude.filter(function (p) { return p !== 'index'; });
+        var isSingleFile = pagesToInclude.length === 1 && docPagesIncluded.length === 1;
+        var stepIdx = 0;
 
-        // Fetch siblings dynamically so el kit siempre trae los HTML actuales,
-        // no los <textarea> embebidos que puedan estar desactualizados.
+        if (pagesToInclude.indexOf('index') >= 0) {
+          var indexRaw = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+          var indexDoc = new DOMParser().parseFromString(indexRaw, 'text/html');
+          indexDoc.querySelectorAll('.toolbar-status, .theme-status').forEach(function (el) { el.classList.remove('show'); });
+          bakeTokens(indexDoc, tokens);
+          freezeCopyClient(indexDoc);
+          updateKitHrefs(indexDoc, version);
+          triggerDownload(makeFilename(version, 'index'), '<!DOCTYPE html>\n' + indexDoc.documentElement.outerHTML);
+          stepIdx++;
+        }
+
         var fetchTargets = [
           { page: 'posts', file: 'agosto-2026-posts.html', srcId: 'src-posts' },
           { page: 'stories', file: 'agosto-2026.html', srcId: 'src-stories' },
           { page: 'tiktok', file: 'agosto-2026-tiktok.html', srcId: null }
-        ];
+        ].filter(function (spec) { return pagesToInclude.indexOf(spec.page) >= 0; });
+
         for (var i = 0; i < fetchTargets.length; i++) {
-          (function (spec, idx) {
+          (function (spec, delayMul) {
             setTimeout(async function () {
               var raw = null;
               try { raw = await fetch(spec.file).then(function (r) { return r.text(); }); }
-              catch (e) { /* fallback abajo */ }
+              catch (e) {}
               if (!raw && spec.srcId) {
                 var srcEl = document.getElementById(spec.srcId);
                 if (srcEl) raw = srcEl.value;
@@ -3968,19 +4208,52 @@
               if (!raw) return;
               var recolored = recolorSource(raw, theme);
               var srcDoc = new DOMParser().parseFromString(recolored, 'text/html');
+              // Inyectamos los edits de sesión en el #calendar-root.
+              var savedContent = sessionContent[spec.page];
+              if (savedContent) {
+                var rootEl = srcDoc.getElementById('calendar-root');
+                if (rootEl) rootEl.innerHTML = savedContent;
+              }
               bakeTokens(srcDoc, tokens);
-              if (version === 'client') { freezeCopyClient(srcDoc); } else { freezeCopyCM(srcDoc); }
+              freezeCopyClient(srcDoc);
+              if (isSingleFile) {
+                applySoloClientTrim(srcDoc, spec.page);
+              } else {
+                trimPillsToIncluded(srcDoc, pagesToInclude);
+              }
               updateKitHrefs(srcDoc, version);
               triggerDownload(makeFilename(version, spec.page), '<!DOCTYPE html>\n' + srcDoc.documentElement.outerHTML);
-            }, (idx + 1) * 400);
-          })(fetchTargets[i], i);
+            }, delayMul * 400);
+          })(fetchTargets[i], stepIdx + i);
         }
+
+        flashTheme('Descargando…');
       }
 
-      var btnDlClient = document.getElementById('btn-download-client');
-      var btnDlCm = document.getElementById('btn-download-cm');
-      if (btnDlClient) btnDlClient.addEventListener('click', function () { downloadKit('client'); });
-      if (btnDlCm) btnDlCm.addEventListener('click', function () { downloadKit('cm'); });
+      // Botones de descarga
+      var btnDlOnlyPosts = document.getElementById('btn-dl-only-posts');
+      var btnDlOnlyStories = document.getElementById('btn-dl-only-stories');
+      var btnDlOnlyTiktok = document.getElementById('btn-dl-only-tiktok');
+      var btnDlCustom = document.getElementById('btn-dl-custom');
+      var dlPicker = document.getElementById('dl-picker');
+      var btnDlPickerGo = document.getElementById('btn-dl-picker-go');
+      var btnDlPickerCancel = document.getElementById('btn-dl-picker-cancel');
+      if (btnDlOnlyPosts) btnDlOnlyPosts.addEventListener('click', function () { downloadPages(['posts']); });
+      if (btnDlOnlyStories) btnDlOnlyStories.addEventListener('click', function () { downloadPages(['stories']); });
+      if (btnDlOnlyTiktok) btnDlOnlyTiktok.addEventListener('click', function () { downloadPages(['tiktok']); });
+      if (btnDlCustom) btnDlCustom.addEventListener('click', function () {
+        if (dlPicker) dlPicker.hidden = !dlPicker.hidden;
+      });
+      if (btnDlPickerCancel) btnDlPickerCancel.addEventListener('click', function () {
+        if (dlPicker) dlPicker.hidden = true;
+      });
+      if (btnDlPickerGo) btnDlPickerGo.addEventListener('click', function () {
+        var checks = dlPicker.querySelectorAll('input[type="checkbox"][data-section]');
+        var selected = Array.from(checks).filter(function (c) { return c.checked; }).map(function (c) { return c.getAttribute('data-section'); });
+        if (!selected.length) { flashTheme('Elegí al menos una sección'); return; }
+        downloadPages(selected);
+        dlPicker.hidden = true;
+      });
 
       bindColorInputs();
       loadTheme();
@@ -4165,6 +4438,227 @@
         if (palNameInput && !palNameInput.value) palNameInput.placeholder = 'Nombre (ej: ' + (tClient.value || 'La Cabrera') + ')';
       });
       palRender();
+
+      // ---------- Carpetas de clientes (planificaciones completas) ----------
+      var PLANNINGS_KEY = 'contenidia-plannings-v1';
+      // Storage keys que usan los doc pages (en sessionStorage).
+      var DOC_KEYS = {
+        posts: 'contenido-calendario-agosto2026-posts-v1',
+        stories: 'contenido-calendario-agosto2026-v2',
+        tiktok: 'contenido-calendario-agosto2026-tiktok-v1'
+      };
+      var planList = document.getElementById('planning-list');
+      var planNameInput = document.getElementById('planning-name');
+      var btnSavePlanning = document.getElementById('btn-save-planning');
+      var btnNewPlanning = document.getElementById('btn-new-planning');
+      var planStatus = document.getElementById('planning-status');
+      var planStatusTimer = null;
+
+      function planFlash(msg) {
+        if (!planStatus) return;
+        planStatus.textContent = msg;
+        planStatus.classList.add('show');
+        clearTimeout(planStatusTimer);
+        planStatusTimer = setTimeout(function () { planStatus.classList.remove('show'); }, 1800);
+      }
+      function planLoadList() {
+        var store = palRealStore();
+        if (!store) return [];
+        try {
+          var raw = store.getItem(PLANNINGS_KEY);
+          if (raw) return JSON.parse(raw) || [];
+        } catch (e) {}
+        return [];
+      }
+      function planSaveList(list) {
+        var store = palRealStore();
+        if (!store) return false;
+        try { store.setItem(PLANNINGS_KEY, JSON.stringify(list)); return true; }
+        catch (e) { return false; }
+      }
+      function planCollectSession() {
+        // Usamos localStorage (que es el shim) para leer con fallback.
+        return {
+          posts: localStorage.getItem(DOC_KEYS.posts),
+          stories: localStorage.getItem(DOC_KEYS.stories),
+          tiktok: localStorage.getItem(DOC_KEYS.tiktok)
+        };
+      }
+      function planFormatDate(ts) {
+        try {
+          var d = new Date(ts);
+          return d.toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' }) + ' · ' + d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+        } catch (e) { return ''; }
+      }
+      function planRender() {
+        if (!planList) return;
+        var list = planLoadList();
+        planList.innerHTML = '';
+        if (!list.length) {
+          var empty = document.createElement('div');
+          empty.className = 'palette-list-empty';
+          empty.textContent = 'Todavía no guardaste ninguna planificación.';
+          planList.appendChild(empty);
+          return;
+        }
+        list.sort(function (a, b) { return (b.savedAt || 0) - (a.savedAt || 0); });
+        list.forEach(function (p) {
+          var chip = document.createElement('div');
+          chip.className = 'planning-chip';
+          chip.setAttribute('data-id', p.id);
+
+          var swatchRow = document.createElement('div');
+          swatchRow.className = 'swatch-row';
+          ['bg', 'card', 'border', 'ink', 'accent', 'accentsoft'].forEach(function (k) {
+            var dot = document.createElement('span');
+            dot.className = 'swatch-dot';
+            dot.style.background = (p.colors && p.colors[k]) || '#000';
+            swatchRow.appendChild(dot);
+          });
+
+          var info = document.createElement('div');
+          info.className = 'planning-info';
+          var name = document.createElement('div');
+          name.className = 'planning-name';
+          name.textContent = p.name || '(sin nombre)';
+          var meta = document.createElement('div');
+          meta.className = 'planning-meta';
+          var metaBits = [];
+          if (p.client) metaBits.push(p.client);
+          if (p.date) metaBits.push(p.date);
+          if (p.savedAt) metaBits.push('guardado ' + planFormatDate(p.savedAt));
+          meta.textContent = metaBits.join(' · ');
+          info.appendChild(name);
+          info.appendChild(meta);
+
+          var actions = document.createElement('div');
+          actions.className = 'planning-actions';
+
+          var btnLoad = document.createElement('button');
+          btnLoad.type = 'button';
+          btnLoad.textContent = 'Cargar';
+          btnLoad.title = 'Restaurar esta planificación en la sesión actual';
+          btnLoad.addEventListener('click', function () { planLoadInto(p.id); });
+
+          var btnDl = document.createElement('button');
+          btnDl.type = 'button';
+          btnDl.textContent = 'Descargar cliente';
+          btnDl.title = 'Cargar esta planificación y descargar el kit versión cliente';
+          btnDl.addEventListener('click', function () { planDownloadClient(p.id); });
+
+          var btnDel = document.createElement('button');
+          btnDel.type = 'button';
+          btnDel.textContent = 'Eliminar';
+          btnDel.className = 'planning-delete';
+          btnDel.addEventListener('click', function () {
+            if (!confirm('¿Eliminar la carpeta "' + (p.name || '') + '"?')) return;
+            var current = planLoadList().filter(function (x) { return x.id !== p.id; });
+            planSaveList(current);
+            planRender();
+            planFlash('Eliminada');
+          });
+
+          actions.appendChild(btnLoad);
+          actions.appendChild(btnDl);
+          actions.appendChild(btnDel);
+
+          chip.appendChild(swatchRow);
+          chip.appendChild(info);
+          chip.appendChild(actions);
+          planList.appendChild(chip);
+        });
+      }
+      function planSaveCurrent() {
+        var name = (planNameInput.value || '').trim();
+        if (!name) {
+          // Fallback: usar cliente + fecha si el input está vacío.
+          var c = (tClient.value || '').trim();
+          var d = (tDate.value || '').trim();
+          if (c || d) name = (c + ' — ' + d).trim(' —');
+        }
+        if (!name) { planFlash('Falta nombre'); return; }
+        var list = planLoadList();
+        var existing = list.find(function (x) { return (x.name || '').toLowerCase() === name.toLowerCase(); });
+        var content = planCollectSession();
+        var record = {
+          name: name,
+          client: (tClient.value || '').trim(),
+          date: (tDate.value || '').trim(),
+          colors: currentTheme(),
+          content: content,
+          savedAt: Date.now()
+        };
+        if (existing) {
+          existing.name = record.name;
+          existing.client = record.client;
+          existing.date = record.date;
+          existing.colors = record.colors;
+          existing.content = record.content;
+          existing.savedAt = record.savedAt;
+          if (planSaveList(list)) planFlash('Actualizada');
+          else planFlash('Sin espacio — quota excedida');
+        } else {
+          record.id = 'pl' + Date.now() + Math.random().toString(36).slice(2, 6);
+          list.push(record);
+          if (planSaveList(list)) planFlash('Guardada');
+          else planFlash('Sin espacio — quota excedida');
+        }
+        planRender();
+        planNameInput.value = '';
+      }
+      function planLoadInto(id) {
+        var list = planLoadList();
+        var p = list.find(function (x) { return x.id === id; });
+        if (!p) return;
+        // localStorage aquí es el shim → clear vacía sessionStorage + entries con prefijo contenidia:.
+        try { localStorage.clear(); } catch (e) {}
+        try {
+          if (p.content && p.content.posts) localStorage.setItem(DOC_KEYS.posts, p.content.posts);
+          if (p.content && p.content.stories) localStorage.setItem(DOC_KEYS.stories, p.content.stories);
+          if (p.content && p.content.tiktok) localStorage.setItem(DOC_KEYS.tiktok, p.content.tiktok);
+        } catch (e) {}
+        if (p.client) tClient.value = p.client;
+        if (p.date) tDate.value = p.date;
+        persistTokens();
+        Object.keys(inputs).forEach(function (k) {
+          if (inputs[k] && p.colors && p.colors[k]) inputs[k].value = p.colors[k];
+        });
+        persistTheme();
+        planFlash('Cargada');
+      }
+      function planDownloadClient(id) {
+        planLoadInto(id);
+        setTimeout(function () { downloadPages(['index', 'posts', 'stories', 'tiktok']); }, 150);
+      }
+
+      if (btnSavePlanning) btnSavePlanning.addEventListener('click', planSaveCurrent);
+      if (btnNewPlanning) {
+        btnNewPlanning.addEventListener('click', function () {
+          if (!confirm('¿Descartar la sesión actual? Los cambios no guardados en una carpeta se pierden.')) return;
+          // Clear vacía sessionStorage + entries prefijadas en localStorage.
+          try { localStorage.clear(); } catch (e) {}
+          tClient.value = 'La Cabrera · Marbella';
+          tDate.value = 'Julio 2026';
+          Object.keys(inputs).forEach(function (k) {
+            if (inputs[k] && DEFAULT_THEME[k]) inputs[k].value = DEFAULT_THEME[k];
+          });
+          persistTheme();
+          persistTokens();
+          planFlash('Sesión limpia');
+        });
+      }
+      // Auto-fill del input con el cliente+fecha actual como sugerencia.
+      function planUpdatePlaceholder() {
+        if (!planNameInput) return;
+        var c = (tClient.value || '').trim();
+        var d = (tDate.value || '').trim();
+        var sug = (c || 'Cliente') + ' — ' + (d || 'Mes');
+        planNameInput.placeholder = sug;
+      }
+      tClient.addEventListener('input', planUpdatePlaceholder);
+      tDate.addEventListener('input', planUpdatePlaceholder);
+      planUpdatePlaceholder();
+      planRender();
     })();
   </script>
 </body>

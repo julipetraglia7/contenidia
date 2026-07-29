@@ -5,18 +5,38 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agosto 2026 — TikTok</title>
 <script>
-  // Session-scoped: sobrevive navegación entre pills (posts ↔ stories ↔ tiktok), se resetea al volver al índice.
+  // Session persistente: sobrevive navegación entre pills. Escribe a sessionStorage + localStorage con prefijo.
   (function () {
     try { window.__realLocalStorage = window.localStorage; } catch (e) {}
-    var real = window.sessionStorage;
+    var session = window.sessionStorage;
+    var real = window.__realLocalStorage;
+    var PREFIX = 'contenidia:';
     var stub = {
-      setItem: function (k, v) { try { real.setItem(k, String(v)); } catch (e) {} },
-      getItem: function (k) { try { return real.getItem(k); } catch (e) { return null; } },
-      removeItem: function (k) { try { real.removeItem(k); } catch (e) {} },
-      clear: function () { try { real.clear(); } catch (e) {} },
-      key: function (i) { try { return real.key(i); } catch (e) { return null; } }
+      setItem: function (k, v) {
+        var s = String(v);
+        try { session.setItem(k, s); } catch (e) {}
+        try { real.setItem(PREFIX + k, s); } catch (e) {}
+      },
+      getItem: function (k) {
+        try { var v = session.getItem(k); if (v != null) return v; } catch (e) {}
+        try { return real.getItem(PREFIX + k); } catch (e) { return null; }
+      },
+      removeItem: function (k) {
+        try { session.removeItem(k); } catch (e) {}
+        try { real.removeItem(PREFIX + k); } catch (e) {}
+      },
+      clear: function () {
+        try { session.clear(); } catch (e) {}
+        try {
+          for (var i = real.length - 1; i >= 0; i--) {
+            var kk = real.key(i);
+            if (kk && kk.indexOf(PREFIX) === 0) real.removeItem(kk);
+          }
+        } catch (e) {}
+      },
+      key: function (i) { try { return session.key(i); } catch (e) { return null; } }
     };
-    Object.defineProperty(stub, 'length', { get: function () { try { return real.length; } catch (e) { return 0; } } });
+    Object.defineProperty(stub, 'length', { get: function () { try { return session.length; } catch (e) { return 0; } } });
     try { Object.defineProperty(window, 'localStorage', { value: stub, configurable: true }); }
     catch (e) { try { window.localStorage = stub; } catch (e2) {} }
   })();
@@ -1248,12 +1268,10 @@
 
       <div class="download-panel" id="panel-downloads">
         <h2>Descargar</h2>
-        <div class="hint">"Solo stories" descarga esta página con tus cambios actuales. "Kit completo" incluye también el índice, posts y stories usando plantillas limpias. Si "Kit completo" está deshabilitado, abrí primero el índice en esta sesión del navegador para inicializar el sistema.</div>
+        <div class="hint">"Solo tiktok" descarga esta página con tus cambios actuales, congelada como versión cliente. "Kit completo" incluye también el índice, posts y stories.</div>
         <div class="download-actions">
           <button type="button" data-dl="solo" data-ver="client">Solo tiktok · cliente</button>
-          <button type="button" data-dl="solo" data-ver="cm">Solo tiktok · CM</button>
           <button type="button" data-dl="full" data-ver="client">Kit completo · cliente</button>
-          <button type="button" data-dl="full" data-ver="cm">Kit completo · CM</button>
         </div>
       </div>
 
