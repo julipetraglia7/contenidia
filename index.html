@@ -2910,7 +2910,61 @@ function blobToDataURL(blob) {
 }
 
 function buildClientHTML(client, plan, posts) {
-  const dataPayload = { client, plan, posts, postTypes: POST_TYPES, months: MONTHS, dows: DOWS, generatedAt: Date.now() };
+  // Meta only (no heavy media) for the lightbox. Media lives in the DOM.
+  const metaPayload = posts.map(p => ({
+    id: p.id, type: p.type, date: p.date, time: p.time,
+    copy: p.copy, cta: p.cta, hashtags: p.hashtags || []
+  }));
+
+  const mediaTag = (m) => {
+    if (m.type === 'image') return `<img src="${m.src}" alt="">`;
+    if (m.type === 'video' && m.dataUrl) {
+      return `<video controls playsinline preload="metadata" poster="${m.thumb||''}" src="${m.dataUrl}"></video>`;
+    }
+    if (m.type === 'video') return `<img src="${m.thumb||''}" alt=""><div class="play-overlay">▶</div>`;
+    return `<div class="no-img">Sin media</div>`;
+  };
+
+  const fmtDate = (d) => d
+    ? new Date(d + 'T00:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: '2-digit', month: 'long' })
+    : 'Sin fecha';
+
+  const postCard = (p) => {
+    const t = POST_TYPES[p.type];
+    const media = p.media || [];
+    const isVideoFirst = media[0] && media[0].type === 'video';
+    const mediaHtml = media.length === 0
+      ? `<div class="no-img">Sin media</div>`
+      : t.multi && media.length > 1
+        ? `<div class="carousel">
+            ${media.map((m,i) => `<div class="slide ${i===0?'active':''}">${mediaTag(m)}</div>`).join('')}
+            <button class="cnav prev" onclick="event.stopPropagation();carouselNav(this,-1)" aria-label="Anterior">‹</button>
+            <button class="cnav next" onclick="event.stopPropagation();carouselNav(this,1)" aria-label="Siguiente">›</button>
+            <div class="cdots">${media.map((_,i) => `<span class="${i===0?'on':''}"></span>`).join('')}</div>
+          </div>`
+        : (isVideoFirst && !media[0].dataUrl
+            ? `<img src="${media[0].thumb||''}" alt=""><div class="play-overlay">▶</div>`
+            : mediaTag(media[0]));
+    return `
+      <article class="post-card" data-post-id="${esc(p.id)}" onclick="openLightbox('${esc(p.id)}')">
+        <div class="post-media ${t.vertical?'vertical':''}">
+          ${mediaHtml}
+          <div class="type-pill">${t.icon} ${t.label}${t.multi && media.length>1 ? ' · '+media.length : ''}</div>
+        </div>
+        <div class="post-body">
+          <div class="post-header">
+            <div class="post-date">${fmtDate(p.date)}${p.time?' · '+p.time+' hs':''}</div>
+            ${p.cta ? `<div class="post-cta">${esc(p.cta)}</div>`:''}
+          </div>
+          <div class="post-copy">${p.copy ? esc(p.copy).replace(/\n/g,'<br>') : '<em class="dim">Sin copy</em>'}</div>
+          ${p.hashtags && p.hashtags.length ? `<div class="post-tags">${p.hashtags.map(h => `<span>#${esc(h)}</span>`).join('')}</div>` : ''}
+        </div>
+      </article>
+    `;
+  };
+
+  const feedPosts = posts.filter(p => !POST_TYPES[p.type].vertical);
+  const verticalPosts = posts.filter(p => POST_TYPES[p.type].vertical);
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -2971,6 +3025,19 @@ function buildClientHTML(client, plan, posts) {
   /* Play overlay for feed video thumbs */
   .play-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 48px; height: 48px; border-radius: 50%; background: rgba(0,0,0,0.7); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 18px; padding-left: 3px; pointer-events: none; box-shadow: 0 4px 16px rgba(0,0,0,0.5); z-index: 2; }
 
+  /* Carousel */
+  .carousel { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .carousel > .slide { position: absolute; inset: 0; opacity: 0; transition: opacity .2s; }
+  .carousel > .slide.active { opacity: 1; }
+  .carousel > .slide img, .carousel > .slide video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .carousel > .slide video { object-fit: contain; background: #000; }
+  .cnav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.6); color: #fff; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 3; }
+  .cnav:hover { background: var(--accent); color: #0d0d0f; }
+  .cnav.prev { left: 10px; } .cnav.next { right: 10px; }
+  .cdots { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; z-index: 3; }
+  .cdots span { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.4); }
+  .cdots span.on { background: #fff; }
+
   /* Lightbox */
   .lightbox { position: fixed; inset: 0; background: rgba(0,0,0,0.88); backdrop-filter: blur(6px); z-index: 100; display: none; align-items: center; justify-content: center; padding: 24px; overflow-y: auto; }
   .lightbox.open { display: flex; }
@@ -2983,9 +3050,10 @@ function buildClientHTML(client, plan, posts) {
   .lb-body { padding: 24px; overflow-y: auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
   .lb-body.vertical { grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr); }
   @media (max-width: 720px) { .lb-body, .lb-body.vertical { grid-template-columns: 1fr; } }
-  .lb-media { background: #08080a; border-radius: 12px; overflow: hidden; aspect-ratio: 4/5; position: relative; }
+  .lb-media { background: #08080a; border-radius: 12px; overflow: hidden; aspect-ratio: 4/5; position: relative; width: 100%; }
   .lb-body.vertical .lb-media { aspect-ratio: 9/16; }
-  .lb-media img, .lb-media video { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .lb-media img, .lb-media video, .lb-media .carousel > .slide img, .lb-media .carousel > .slide video { width: 100%; height: 100%; object-fit: contain !important; display: block; background: #000; }
+  .lb-media .play-overlay { display: none; }  /* hide the "play" thumb overlay on real playable videos */
   .lb-slide { position: absolute; inset: 0; opacity: 0; transition: opacity .2s; }
   .lb-slide.active { opacity: 1; }
   .lb-slide img, .lb-slide video { width: 100%; height: 100%; object-fit: contain; }
@@ -3019,120 +3087,83 @@ function buildClientHTML(client, plan, posts) {
     <div class="meta">${esc(plan.name)} · ${MONTHS[plan.month]} ${plan.year} · ${posts.length} pieza${posts.length!==1?'s':''}</div>
   </header>
 
-  <section id="feedView" class="view active"></section>
+  ${feedPosts.length ? `
+    <div class="section-label">Feed — Posts &amp; Carruseles</div>
+    <div class="grid">${feedPosts.map(postCard).join('')}</div>
+  `:''}
+
+  ${verticalPosts.length ? `
+    <div class="section-label">Stories · TikTok</div>
+    <div class="grid">${verticalPosts.map(postCard).join('')}</div>
+  `:''}
+
+  ${!posts.length ? `<div style="text-align:center;padding:80px;color:var(--ink-dim);">Aún no hay contenido cargado.</div>` : ''}
 
   <footer>Documento generado el ${new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'})} · Solo lectura</footer>
 </div>
 
 <div class="lightbox" id="lightbox" onclick="if(event.target===this)closeLightbox()">
   <div class="lb-panel">
-    <button class="lb-close" onclick="closeLightbox()">×</button>
+    <button class="lb-close" onclick="closeLightbox()" aria-label="Cerrar">×</button>
     <div id="lbInner"></div>
   </div>
 </div>
 
 <script>
-const DATA = ${JSON.stringify(dataPayload).replace(/<\//g, '<\\/')};
-const { client: CLIENT, plan: PLAN, posts: POSTS, postTypes: PT, months: MONTHS_ES, dows: DOWS_ES } = DATA;
+/* Metadata for the lightbox — media data itself lives in the DOM (rendered above).
+   This means the client sees all images/videos even if this script is blocked. */
+const POSTS_META = ${JSON.stringify(metaPayload).replace(/<\//g, '<\\/')};
+const PT = ${JSON.stringify(POST_TYPES).replace(/<\//g, '<\\/')};
 
 function esc(s) { return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
-function fmtDate(d, full) {
-  if (!d) return 'Sin fecha';
-  const dt = new Date(d + 'T00:00:00');
-  return dt.toLocaleDateString('es-AR', full ? {weekday:'long',day:'2-digit',month:'long'} : {day:'2-digit',month:'short'});
-}
-function mediaTag(m) {
-  if (!m) return '';
-  if (m.type === 'image') return '<img src="' + m.src + '">';
-  if (m.type === 'video' && m.dataUrl) return '<video controls playsinline preload="metadata" poster="' + (m.thumb||'') + '" src="' + m.dataUrl + '"></video>';
-  return '<div class="no-img">Video no disponible</div>';
-}
-function thumbSrc(m) {
-  if (!m) return null;
-  return m.type === 'image' ? m.src : m.thumb;
+
+function carouselNav(btn, dir) {
+  const car = btn.closest('.carousel');
+  const slides = car.querySelectorAll(':scope > .slide');
+  const dots = car.querySelectorAll(':scope > .cdots span');
+  let i = 0; slides.forEach((s,idx) => { if (s.classList.contains('active')) i = idx; });
+  slides[i].classList.remove('active'); if (dots[i]) dots[i].classList.remove('on');
+  i = (i + dir + slides.length) % slides.length;
+  slides[i].classList.add('active'); if (dots[i]) dots[i].classList.add('on');
 }
 
-/* ---- FEED ---- */
-function renderFeed() {
-  const feedPosts = POSTS.filter(p => !PT[p.type].vertical);
-  const verticalPosts = POSTS.filter(p => PT[p.type].vertical);
-  let html = '';
-  if (feedPosts.length) {
-    html += '<div class="section-label">Feed — Posts &amp; Carruseles</div>';
-    html += '<div class="grid">' + feedPosts.map(feedCard).join('') + '</div>';
-  }
-  if (verticalPosts.length) {
-    html += '<div class="section-label">Stories · TikTok</div>';
-    html += '<div class="grid">' + verticalPosts.map(feedCard).join('') + '</div>';
-  }
-  if (!POSTS.length) html = '<div style="text-align:center;padding:80px;color:var(--ink-dim);">Aún no hay contenido cargado.</div>';
-  document.getElementById('feedView').innerHTML = html;
-}
-
-function feedCard(p) {
-  const t = PT[p.type];
-  const media = p.media || [];
-  const first = media[0];
-  const isVideo = first && first.type === 'video';
-  const cardMedia = media.length === 0
-    ? '<div class="no-img">Sin media</div>'
-    : (first.type === 'image' ? '<img src="' + first.src + '">' : '<img src="' + (first.thumb||'') + '">')
-      + (isVideo ? '<div class="play-overlay">▶</div>' : '')
-      + (t.multi && media.length > 1 ? '<div style="position:absolute;top:12px;right:12px;background:rgba(0,0,0,0.75);color:#fff;font-family:var(--font-mono);font-size:10.5px;padding:5px 10px;border-radius:999px;letter-spacing:0.05em;">▤ ' + media.length + '</div>' : '');
-  return \`
-    <article class="post-card" onclick="openLightbox('\${p.id}')">
-      <div class="post-media \${t.vertical?'vertical':''}">
-        \${cardMedia}
-        <div class="type-pill">\${t.icon} \${t.label}</div>
-      </div>
-      <div class="post-body">
-        <div class="post-header">
-          <div class="post-date">\${p.date ? fmtDate(p.date, true) : 'Sin fecha'}\${p.time?' · '+p.time+' hs':''}</div>
-          \${p.cta ? '<div class="post-cta">'+esc(p.cta)+'</div>':''}
-        </div>
-        <div class="post-copy">\${p.copy ? esc(p.copy).replace(/\\n/g,'<br>') : '<em class="dim">Sin copy</em>'}</div>
-        \${p.hashtags && p.hashtags.length ? '<div class="post-tags">' + p.hashtags.map(h => '<span>#'+esc(h)+'</span>').join('') + '</div>' : ''}
-      </div>
-    </article>
-  \`;
-}
-
-/* ---- LIGHTBOX ---- */
+/* ---- LIGHTBOX (progressive enhancement) ---- */
 let lbSlideIdx = 0;
 
 function openLightbox(id) {
-  const p = POSTS.find(x => x.id === id);
-  if (!p) return;
-  const t = PT[p.type];
-  const media = p.media || [];
+  const meta = POSTS_META.find(x => x.id === id);
+  const card = document.querySelector('[data-post-id="' + id + '"]');
+  if (!meta || !card) return;
+  const t = PT[meta.type];
   lbSlideIdx = 0;
+
+  // Clone the media area from the card so we reuse the already-loaded images/videos
+  const cardMedia = card.querySelector('.post-media');
+  const clonedMedia = cardMedia.cloneNode(true);
+  const pill = clonedMedia.querySelector('.type-pill'); if (pill) pill.remove();
+
+  const dateStr = meta.date
+    ? new Date(meta.date+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'2-digit',month:'long'})
+    : 'Sin fecha';
+
   const inner = document.getElementById('lbInner');
-  const dateStr = p.date ? new Date(p.date+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'2-digit',month:'long'}) : 'Sin fecha';
-
-  const mediaHtml = media.length === 0
-    ? '<div class="no-img">Sin media</div>'
-    : media.length === 1
-      ? mediaTag(media[0])
-      : '<div style="position:relative;width:100%;height:100%;">' +
-          media.map((m,i) => '<div class="lb-slide ' + (i===0?'active':'') + '">' + mediaTag(m) + '</div>').join('') +
-          '<button class="lb-nav prev" onclick="lbNav(-1,'+media.length+')">‹</button>' +
-          '<button class="lb-nav next" onclick="lbNav(1,'+media.length+')">›</button>' +
-          '<div class="lb-dots">' + media.map((_,i) => '<span class="'+(i===0?'on':'')+'"></span>').join('') + '</div>' +
-        '</div>';
-
   inner.innerHTML =
     '<div class="lb-header">' +
       '<div class="lb-badge">' + t.icon + ' ' + t.label + '</div>' +
-      '<div class="lb-date">' + dateStr + (p.time?' · ' + p.time + ' hs':'') + '</div>' +
+      '<div class="lb-date">' + dateStr + (meta.time?' · ' + meta.time + ' hs':'') + '</div>' +
     '</div>' +
     '<div class="lb-body ' + (t.vertical?'vertical':'') + '">' +
-      '<div class="lb-media">' + mediaHtml + '</div>' +
+      '<div class="lb-media-slot"></div>' +
       '<div class="lb-info">' +
-        (p.cta ? '<div class="lb-field"><label>Call to action</label><div class="lb-cta">' + esc(p.cta) + '</div></div>' : '') +
-        '<div class="lb-field"><label>Copy</label><div class="lb-copy">' + (p.copy ? esc(p.copy).replace(/\\n/g,'<br>') : '<em class="dim">Sin copy</em>') + '</div></div>' +
-        (p.hashtags && p.hashtags.length ? '<div class="lb-field"><label>Hashtags</label><div class="lb-tags">' + p.hashtags.map(h => '<span>#'+esc(h)+'</span>').join('') + '</div></div>' : '') +
+        (meta.cta ? '<div class="lb-field"><label>Call to action</label><div class="lb-cta">' + esc(meta.cta) + '</div></div>' : '') +
+        '<div class="lb-field"><label>Copy</label><div class="lb-copy">' + (meta.copy ? esc(meta.copy).replace(/\\n/g,'<br>') : '<em class="dim">Sin copy</em>') + '</div></div>' +
+        (meta.hashtags && meta.hashtags.length ? '<div class="lb-field"><label>Hashtags</label><div class="lb-tags">' + meta.hashtags.map(h => '<span>#'+esc(h)+'</span>').join('') + '</div></div>' : '') +
       '</div>' +
     '</div>';
+
+  const slot = inner.querySelector('.lb-media-slot');
+  clonedMedia.classList.add('lb-media');
+  slot.replaceWith(clonedMedia);
 
   document.getElementById('lightbox').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -3141,23 +3172,12 @@ function openLightbox(id) {
 function closeLightbox() {
   document.getElementById('lightbox').classList.remove('open');
   document.body.style.overflow = '';
-  // pause any playing videos
   document.querySelectorAll('#lbInner video').forEach(v => v.pause());
-}
-
-function lbNav(dir, total) {
-  lbSlideIdx = (lbSlideIdx + dir + total) % total;
-  const slides = document.querySelectorAll('#lbInner .lb-slide');
-  const dots = document.querySelectorAll('#lbInner .lb-dots span');
-  slides.forEach((s,i) => s.classList.toggle('active', i===lbSlideIdx));
-  dots.forEach((d,i) => d.classList.toggle('on', i===lbSlideIdx));
 }
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeLightbox();
 });
-
-renderFeed();
 <\/script>
 </body>
 </html>`;
