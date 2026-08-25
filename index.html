@@ -2910,47 +2910,7 @@ function blobToDataURL(blob) {
 }
 
 function buildClientHTML(client, plan, posts) {
-  const feedPosts = posts.filter(p => !POST_TYPES[p.type].vertical);
-  const verticalPosts = posts.filter(p => POST_TYPES[p.type].vertical);
-
-  const mediaTag = (m) => {
-    if (m.type === 'image') return `<img src="${m.src}">`;
-    if (m.type === 'video' && m.dataUrl) {
-      return `<video controls playsinline preload="metadata" poster="${m.thumb||''}" src="${m.dataUrl}"></video>`;
-    }
-    return `<div class="no-img">Video no disponible</div>`;
-  };
-
-  const postCard = (p) => {
-    const t = POST_TYPES[p.type];
-    const media = p.media || [];
-    return `
-      <article class="post-card" data-type="${p.type}">
-        <div class="post-media ${t.vertical?'vertical':''} ${t.multi?'multi':''}">
-          ${media.length === 0
-            ? `<div class="no-img">Sin media</div>`
-            : t.multi && media.length > 1
-              ? `<div class="carousel" data-count="${media.length}">
-                  ${media.map((m,i) => `<div class="slide ${i===0?'active':''}">${mediaTag(m)}</div>`).join('')}
-                  <button class="cnav prev" onclick="carouselNav(this,-1)">‹</button>
-                  <button class="cnav next" onclick="carouselNav(this,1)">›</button>
-                  <div class="cdots">${media.map((_,i) => `<span class="${i===0?'on':''}"></span>`).join('')}</div>
-                </div>`
-              : mediaTag(media[0])
-          }
-          <div class="type-pill">${t.icon} ${t.label}${t.multi && media.length>1 ? ' · '+media.length : ''}</div>
-        </div>
-        <div class="post-body">
-          <div class="post-header">
-            <div class="post-date">${p.date ? new Date(p.date+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'2-digit',month:'long'}) : 'Sin fecha'}${p.time?' · '+p.time+' hs':''}</div>
-            ${p.cta ? `<div class="post-cta">${esc(p.cta)}</div>`:''}
-          </div>
-          <div class="post-copy">${esc(p.copy).replace(/\n/g,'<br>') || '<em class="dim">Sin copy</em>'}</div>
-          ${p.hashtags && p.hashtags.length ? `<div class="post-tags">${p.hashtags.map(h => `<span>#${esc(h)}</span>`).join('')}</div>` : ''}
-        </div>
-      </article>
-    `;
-  };
+  const dataPayload = { client, plan, posts, postTypes: POST_TYPES, months: MONTHS, dows: DOWS, generatedAt: Date.now() };
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -2973,19 +2933,32 @@ function buildClientHTML(client, plan, posts) {
   }
   * { margin:0; padding:0; box-sizing:border-box; user-select:text; }
   body { font-family: var(--font-body); background: var(--bg); color: var(--ink); line-height:1.55; }
-  .page { max-width: 1100px; margin: 0 auto; padding: 60px 32px 100px; }
-  header { border-bottom: 1px solid var(--border); padding-bottom: 32px; margin-bottom: 40px; position:relative; }
+  .page { max-width: 1200px; margin: 0 auto; padding: 60px 32px 100px; }
+  header { border-bottom: 1px solid var(--border); padding-bottom: 32px; margin-bottom: 32px; position:relative; }
   header::after { content:''; position:absolute; left:0; bottom:-1px; width:120px; height:2px; background: linear-gradient(90deg, var(--accent), transparent); }
   .brand-tag { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
   h1 { font-family: var(--font-display); font-size: 52px; font-weight: 800; line-height:1.05; letter-spacing: -0.03em; }
   .meta { font-family: var(--font-mono); font-size: 12px; color: var(--ink-dim); margin-top: 16px; letter-spacing: 0.05em; }
-  .section-label { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); margin: 48px 0 20px; display:inline-flex; align-items:center; gap:10px; }
+
+  /* Tabs */
+  .tabs { display: inline-flex; gap: 4px; background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: 4px; margin-bottom: 32px; }
+  .tab { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim); background: transparent; border: none; padding: 9px 20px; border-radius: 999px; cursor: pointer; transition: all .15s; }
+  .tab:hover { color: var(--ink); }
+  .tab.active { background: var(--accent); color: #0d0d0f; font-weight: 600; }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* Section label */
+  .section-label { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); margin: 24px 0 20px; display:inline-flex; align-items:center; gap:10px; }
   .section-label::before { content:''; display:inline-block; width:24px; height:2px; background: var(--accent); }
+  .section-label:first-child { margin-top: 0; }
+
+  /* Feed grid */
   .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
   @media (max-width: 1000px) { .grid { grid-template-columns: repeat(3, 1fr); } }
   @media (max-width: 720px) { .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; } }
   @media (max-width: 420px) { .grid { grid-template-columns: 1fr; } }
-  .post-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; transition: transform .2s, border-color .2s; }
+  .post-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; transition: transform .2s, border-color .2s; cursor: pointer; }
   .post-card:hover { transform: translateY(-3px); border-color: var(--accent); }
   .post-media { position: relative; background: #08080a; width: 100%; }
   .post-media:not(.vertical) { aspect-ratio: 4/5; }
@@ -2993,17 +2966,7 @@ function buildClientHTML(client, plan, posts) {
   .post-media img, .post-media video { width: 100%; height: 100%; object-fit: cover; display:block; background:#000; }
   .post-media video { object-fit: contain; }
   .no-img { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color: var(--ink-dim); font-family: var(--font-mono); font-size: 12px; }
-  .type-pill { position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.75); color: var(--ink); font-family: var(--font-mono); font-size: 10.5px; padding: 5px 10px; border-radius: 999px; letter-spacing: 0.05em; text-transform: uppercase; }
-  .carousel { position: relative; width:100%; height:100%; }
-  .carousel .slide { position:absolute; inset:0; opacity:0; transition:opacity .2s; }
-  .carousel .slide.active { opacity:1; }
-  .carousel .slide img, .carousel .slide video { width:100%; height:100%; object-fit:cover; }
-  .carousel .slide video { object-fit: contain; background:#000; }
-  .cnav { position:absolute; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:var(--ink); width:32px; height:32px; border-radius:50%; border:none; font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
-  .cnav.prev { left:10px; } .cnav.next { right:10px; }
-  .cdots { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); display:flex; gap:5px; }
-  .cdots span { width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,0.4); }
-  .cdots span.on { background:var(--ink); }
+  .type-pill { position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.75); color: var(--ink); font-family: var(--font-mono); font-size: 10.5px; padding: 5px 10px; border-radius: 999px; letter-spacing: 0.05em; text-transform: uppercase; z-index: 2; }
   .post-body { padding: 14px 14px 16px; display: flex; flex-direction: column; gap: 9px; }
   .post-header { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
   .post-date { font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: 0.05em; color: var(--accent); text-transform: uppercase; }
@@ -3012,11 +2975,66 @@ function buildClientHTML(client, plan, posts) {
   .dim { color: var(--ink-dim); opacity: 0.6; }
   .post-tags { display:flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
   .post-tags span { font-family: var(--font-mono); font-size: 10px; color: color-mix(in srgb, var(--accent) 80%, var(--ink) 20%); background: color-mix(in srgb, var(--accent) 8%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent); padding: 2px 7px; border-radius: 999px; }
+
+  /* Play overlay for feed video thumbs */
+  .play-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 48px; height: 48px; border-radius: 50%; background: rgba(0,0,0,0.7); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 18px; padding-left: 3px; pointer-events: none; box-shadow: 0 4px 16px rgba(0,0,0,0.5); z-index: 2; }
+
+  /* Calendar */
+  .cal-title { font-family: var(--font-display); font-size: 28px; font-weight: 700; letter-spacing: -0.02em; text-transform: capitalize; margin-bottom: 20px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-dow { font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: 0.15em; text-transform: uppercase; color: var(--accent); padding: 8px 4px; text-align: center; }
+  .cal-cell { aspect-ratio: 1; background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; position: relative; overflow: hidden; }
+  .cal-cell.empty { opacity: 0.25; }
+  .cal-num { position: absolute; top: 6px; left: 6px; z-index: 3; font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; color: #fff; background: rgba(0,0,0,0.7); padding: 2px 7px; border-radius: 5px; }
+  .cal-thumbs { position: absolute; inset: 0; display: grid; gap: 2px; z-index: 2; }
+  .cal-thumbs.c1 { grid-template-columns: 1fr; }
+  .cal-thumbs.c2 { grid-template-columns: 1fr 1fr; }
+  .cal-thumbs.c3 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+  .cal-thumbs.c3 .cal-t:first-child { grid-column: 1 / span 2; }
+  .cal-thumbs.c4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+  .cal-t { position: relative; overflow: hidden; background: var(--card); cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--ink-dim); font-family: var(--font-display); font-size: 14px; transition: transform .12s; }
+  .cal-t:hover { transform: scale(1.03); z-index: 4; box-shadow: 0 4px 14px rgba(0,0,0,0.6); }
+  .cal-t img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cal-t-type { position: absolute; bottom: 3px; right: 3px; background: rgba(0,0,0,0.75); color: #fff; font-family: var(--font-mono); font-size: 8.5px; font-weight: 600; padding: 1px 5px; border-radius: 3px; letter-spacing: 0.03em; text-transform: uppercase; }
+  .cal-t-play { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,0.8); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 9px; padding-left: 2px; pointer-events: none; }
+  .cal-t.more { background: color-mix(in srgb, var(--accent) 60%, var(--bg-2)); color: #fff; font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+
+  /* Lightbox */
+  .lightbox { position: fixed; inset: 0; background: rgba(0,0,0,0.88); backdrop-filter: blur(6px); z-index: 100; display: none; align-items: center; justify-content: center; padding: 24px; overflow-y: auto; }
+  .lightbox.open { display: flex; }
+  .lb-panel { background: var(--bg-2); border: 1px solid var(--border); border-radius: 16px; max-width: 960px; width: 100%; max-height: 92vh; overflow: hidden; display: flex; flex-direction: column; position: relative; }
+  .lb-close { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border-radius: 50%; background: rgba(0,0,0,0.5); color: #fff; border: none; font-size: 20px; cursor: pointer; z-index: 20; display: flex; align-items: center; justify-content: center; }
+  .lb-close:hover { background: var(--accent); color: #0d0d0f; }
+  .lb-header { padding: 18px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  .lb-badge { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #0d0d0f; background: var(--lime); padding: 4px 10px; border-radius: 999px; }
+  .lb-date { font-family: var(--font-display); font-size: 18px; font-weight: 600; letter-spacing: -0.01em; text-transform: capitalize; }
+  .lb-body { padding: 24px; overflow-y: auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+  .lb-body.vertical { grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr); }
+  @media (max-width: 720px) { .lb-body, .lb-body.vertical { grid-template-columns: 1fr; } }
+  .lb-media { background: #08080a; border-radius: 12px; overflow: hidden; aspect-ratio: 4/5; position: relative; }
+  .lb-body.vertical .lb-media { aspect-ratio: 9/16; }
+  .lb-media img, .lb-media video { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .lb-slide { position: absolute; inset: 0; opacity: 0; transition: opacity .2s; }
+  .lb-slide.active { opacity: 1; }
+  .lb-slide img, .lb-slide video { width: 100%; height: 100%; object-fit: contain; }
+  .lb-nav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.65); color: #fff; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 3; }
+  .lb-nav:hover { background: var(--accent); color: #0d0d0f; }
+  .lb-nav.prev { left: 10px; } .lb-nav.next { right: 10px; }
+  .lb-dots { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; z-index: 3; }
+  .lb-dots span { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.35); }
+  .lb-dots span.on { background: #fff; }
+  .lb-info { display: flex; flex-direction: column; gap: 18px; }
+  .lb-field label { display: block; font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: 0.15em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+  .lb-copy { font-size: 14px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
+  .lb-cta { display: inline-block; font-family: var(--font-mono); font-size: 12px; color: var(--ink); background: color-mix(in srgb, var(--accent) 22%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); padding: 5px 12px; border-radius: 999px; }
+  .lb-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+  .lb-tags span { font-family: var(--font-mono); font-size: 11.5px; color: color-mix(in srgb, var(--accent) 80%, var(--ink) 20%); background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); padding: 3px 9px; border-radius: 999px; }
+
   footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid var(--border); font-family: var(--font-mono); font-size: 11px; color: var(--ink-dim); text-align: center; letter-spacing: 0.05em; }
-  /* Read-only: bloqueamos edición de contenteditable si algún navegador lo interpretara */
-  [contenteditable] { pointer-events: none; }
   @media print {
     body { background: white; color: black; }
+    .tabs, .lightbox { display: none !important; }
+    .view { display: block !important; page-break-after: always; }
     .post-card { break-inside: avoid; border-color: #ddd; background: white; color: black; }
     .post-copy, .post-date, .post-cta, .post-tags span { color: black !important; }
   }
@@ -3030,30 +3048,199 @@ function buildClientHTML(client, plan, posts) {
     <div class="meta">${esc(plan.name)} · ${MONTHS[plan.month]} ${plan.year} · ${posts.length} pieza${posts.length!==1?'s':''}</div>
   </header>
 
-  ${feedPosts.length ? `
-    <div class="section-label">Feed — Posts &amp; Carruseles</div>
-    <div class="grid">${feedPosts.map(postCard).join('')}</div>
-  `:''}
+  <nav class="tabs">
+    <button class="tab active" data-view="feed" onclick="switchView('feed')">Feed</button>
+    <button class="tab" data-view="calendar" onclick="switchView('calendar')">Calendario</button>
+  </nav>
 
-  ${verticalPosts.length ? `
-    <div class="section-label">Stories · Reels · TikTok</div>
-    <div class="grid">${verticalPosts.map(postCard).join('')}</div>
-  `:''}
-
-  ${!posts.length ? `<div style="text-align:center;padding:80px;color:var(--ink-dim);">Aún no hay contenido cargado.</div>` : ''}
+  <section id="feedView" class="view active"></section>
+  <section id="calView" class="view"></section>
 
   <footer>Documento generado el ${new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'})} · Solo lectura</footer>
 </div>
+
+<div class="lightbox" id="lightbox" onclick="if(event.target===this)closeLightbox()">
+  <div class="lb-panel">
+    <button class="lb-close" onclick="closeLightbox()">×</button>
+    <div id="lbInner"></div>
+  </div>
+</div>
+
 <script>
-function carouselNav(btn, dir) {
-  const car = btn.closest('.carousel');
-  const slides = car.querySelectorAll('.slide');
-  const dots = car.querySelectorAll('.cdots span');
-  let i = 0; slides.forEach((s,idx) => { if (s.classList.contains('active')) i = idx; });
-  slides[i].classList.remove('active'); dots[i]?.classList.remove('on');
-  i = (i + dir + slides.length) % slides.length;
-  slides[i].classList.add('active'); dots[i]?.classList.add('on');
+const DATA = ${JSON.stringify(dataPayload).replace(/<\//g, '<\\/')};
+const { client: CLIENT, plan: PLAN, posts: POSTS, postTypes: PT, months: MONTHS_ES, dows: DOWS_ES } = DATA;
+
+function esc(s) { return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+function fmtDate(d, full) {
+  if (!d) return 'Sin fecha';
+  const dt = new Date(d + 'T00:00:00');
+  return dt.toLocaleDateString('es-AR', full ? {weekday:'long',day:'2-digit',month:'long'} : {day:'2-digit',month:'short'});
 }
+function mediaTag(m) {
+  if (!m) return '';
+  if (m.type === 'image') return '<img src="' + m.src + '">';
+  if (m.type === 'video' && m.dataUrl) return '<video controls playsinline preload="metadata" poster="' + (m.thumb||'') + '" src="' + m.dataUrl + '"></video>';
+  return '<div class="no-img">Video no disponible</div>';
+}
+function thumbSrc(m) {
+  if (!m) return null;
+  return m.type === 'image' ? m.src : m.thumb;
+}
+
+/* ---- FEED ---- */
+function renderFeed() {
+  const feedPosts = POSTS.filter(p => !PT[p.type].vertical);
+  const verticalPosts = POSTS.filter(p => PT[p.type].vertical);
+  let html = '';
+  if (feedPosts.length) {
+    html += '<div class="section-label">Feed — Posts &amp; Carruseles</div>';
+    html += '<div class="grid">' + feedPosts.map(feedCard).join('') + '</div>';
+  }
+  if (verticalPosts.length) {
+    html += '<div class="section-label">Stories · TikTok</div>';
+    html += '<div class="grid">' + verticalPosts.map(feedCard).join('') + '</div>';
+  }
+  if (!POSTS.length) html = '<div style="text-align:center;padding:80px;color:var(--ink-dim);">Aún no hay contenido cargado.</div>';
+  document.getElementById('feedView').innerHTML = html;
+}
+
+function feedCard(p) {
+  const t = PT[p.type];
+  const media = p.media || [];
+  const first = media[0];
+  const isVideo = first && first.type === 'video';
+  const cardMedia = media.length === 0
+    ? '<div class="no-img">Sin media</div>'
+    : (first.type === 'image' ? '<img src="' + first.src + '">' : '<img src="' + (first.thumb||'') + '">')
+      + (isVideo ? '<div class="play-overlay">▶</div>' : '')
+      + (t.multi && media.length > 1 ? '<div style="position:absolute;top:12px;right:12px;background:rgba(0,0,0,0.75);color:#fff;font-family:var(--font-mono);font-size:10.5px;padding:5px 10px;border-radius:999px;letter-spacing:0.05em;">▤ ' + media.length + '</div>' : '');
+  return \`
+    <article class="post-card" onclick="openLightbox('\${p.id}')">
+      <div class="post-media \${t.vertical?'vertical':''}">
+        \${cardMedia}
+        <div class="type-pill">\${t.icon} \${t.label}</div>
+      </div>
+      <div class="post-body">
+        <div class="post-header">
+          <div class="post-date">\${p.date ? fmtDate(p.date, true) : 'Sin fecha'}\${p.time?' · '+p.time+' hs':''}</div>
+          \${p.cta ? '<div class="post-cta">'+esc(p.cta)+'</div>':''}
+        </div>
+        <div class="post-copy">\${p.copy ? esc(p.copy).replace(/\\n/g,'<br>') : '<em class="dim">Sin copy</em>'}</div>
+        \${p.hashtags && p.hashtags.length ? '<div class="post-tags">' + p.hashtags.map(h => '<span>#'+esc(h)+'</span>').join('') + '</div>' : ''}
+      </div>
+    </article>
+  \`;
+}
+
+/* ---- CALENDAR ---- */
+function renderCalendar() {
+  const first = new Date(PLAN.year, PLAN.month, 1);
+  const startOffset = (first.getDay() + 6) % 7;
+  const daysInMonth = new Date(PLAN.year, PLAN.month + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < startOffset; i++) cells.push({empty:true});
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = PLAN.year + '-' + String(PLAN.month+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+    const dayPosts = POSTS.filter(p => p.date === dateStr);
+    cells.push({day:d, dateStr, dayPosts});
+  }
+  let html = '<div class="cal-title">' + MONTHS_ES[PLAN.month] + ' ' + PLAN.year + '</div>';
+  html += '<div class="cal-grid">';
+  DOWS_ES.forEach(d => html += '<div class="cal-dow">' + d + '</div>');
+  cells.forEach(c => {
+    if (c.empty) { html += '<div class="cal-cell empty"></div>'; return; }
+    html += '<div class="cal-cell"><div class="cal-num">' + c.day + '</div>';
+    if (c.dayPosts.length) {
+      const n = c.dayPosts.length;
+      const shown = n > 4 ? c.dayPosts.slice(0,3) : c.dayPosts;
+      const extra = n > 4 ? n - 3 : 0;
+      const count = shown.length + (extra ? 1 : 0);
+      html += '<div class="cal-thumbs c' + count + '">';
+      shown.forEach(p => {
+        const t = PT[p.type];
+        const m = p.media && p.media[0];
+        const src = thumbSrc(m);
+        const inner = src ? '<img src="' + src + '">' + (m.type==='video' ? '<span class="cal-t-play">▶</span>' : '') : '<span>' + t.icon + '</span>';
+        html += '<div class="cal-t" onclick="openLightbox(\\'' + p.id + '\\')" title="' + esc(p.copy || t.label) + '">' + inner + '<span class="cal-t-type">' + t.icon + '</span></div>';
+      });
+      if (extra) {
+        html += '<div class="cal-t more" onclick="openLightbox(\\'' + c.dayPosts[3].id + '\\')">+' + extra + '</div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+  document.getElementById('calView').innerHTML = html;
+}
+
+/* ---- LIGHTBOX ---- */
+let lbSlideIdx = 0;
+
+function openLightbox(id) {
+  const p = POSTS.find(x => x.id === id);
+  if (!p) return;
+  const t = PT[p.type];
+  const media = p.media || [];
+  lbSlideIdx = 0;
+  const inner = document.getElementById('lbInner');
+  const dateStr = p.date ? new Date(p.date+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'2-digit',month:'long'}) : 'Sin fecha';
+
+  const mediaHtml = media.length === 0
+    ? '<div class="no-img">Sin media</div>'
+    : media.length === 1
+      ? mediaTag(media[0])
+      : '<div style="position:relative;width:100%;height:100%;">' +
+          media.map((m,i) => '<div class="lb-slide ' + (i===0?'active':'') + '">' + mediaTag(m) + '</div>').join('') +
+          '<button class="lb-nav prev" onclick="lbNav(-1,'+media.length+')">‹</button>' +
+          '<button class="lb-nav next" onclick="lbNav(1,'+media.length+')">›</button>' +
+          '<div class="lb-dots">' + media.map((_,i) => '<span class="'+(i===0?'on':'')+'"></span>').join('') + '</div>' +
+        '</div>';
+
+  inner.innerHTML =
+    '<div class="lb-header">' +
+      '<div class="lb-badge">' + t.icon + ' ' + t.label + '</div>' +
+      '<div class="lb-date">' + dateStr + (p.time?' · ' + p.time + ' hs':'') + '</div>' +
+    '</div>' +
+    '<div class="lb-body ' + (t.vertical?'vertical':'') + '">' +
+      '<div class="lb-media">' + mediaHtml + '</div>' +
+      '<div class="lb-info">' +
+        (p.cta ? '<div class="lb-field"><label>Call to action</label><div class="lb-cta">' + esc(p.cta) + '</div></div>' : '') +
+        '<div class="lb-field"><label>Copy</label><div class="lb-copy">' + (p.copy ? esc(p.copy).replace(/\\n/g,'<br>') : '<em class="dim">Sin copy</em>') + '</div></div>' +
+        (p.hashtags && p.hashtags.length ? '<div class="lb-field"><label>Hashtags</label><div class="lb-tags">' + p.hashtags.map(h => '<span>#'+esc(h)+'</span>').join('') + '</div></div>' : '') +
+      '</div>' +
+    '</div>';
+
+  document.getElementById('lightbox').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.body.style.overflow = '';
+  // pause any playing videos
+  document.querySelectorAll('#lbInner video').forEach(v => v.pause());
+}
+
+function lbNav(dir, total) {
+  lbSlideIdx = (lbSlideIdx + dir + total) % total;
+  const slides = document.querySelectorAll('#lbInner .lb-slide');
+  const dots = document.querySelectorAll('#lbInner .lb-dots span');
+  slides.forEach((s,i) => s.classList.toggle('active', i===lbSlideIdx));
+  dots.forEach((d,i) => d.classList.toggle('on', i===lbSlideIdx));
+}
+
+function switchView(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === name));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === name + 'View'));
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeLightbox();
+});
+
+renderFeed();
+renderCalendar();
 <\/script>
 </body>
 </html>`;
