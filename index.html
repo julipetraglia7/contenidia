@@ -741,38 +741,275 @@
     background: var(--bg-2);
     border: 1px solid var(--border-soft);
     border-radius: 8px;
-    padding: 6px;
     position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
     overflow: hidden;
-    cursor: pointer;
+    cursor: default;
+    transition: border-color .15s;
   }
   .cal-day:hover { border-color: var(--border); }
-  .cal-day.other-month { opacity: 0.3; }
+  .cal-day.other-month { opacity: 0.3; pointer-events: none; }
   .cal-day-num {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    z-index: 3;
     font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--ink-dim);
+    font-size: 10.5px;
+    font-weight: 600;
+    color: #fff;
+    background: rgba(0,0,0,0.7);
+    padding: 2px 7px;
+    border-radius: 5px;
+    line-height: 1.3;
+    backdrop-filter: blur(2px);
   }
   .cal-day.today .cal-day-num {
-    color: var(--accent);
-    font-weight: 700;
+    background: var(--orange);
+    color: #0d0d0f;
   }
-  .cal-post-mini {
-    background: var(--accent);
-    color: var(--ink);
-    font-size: 9px;
-    padding: 2px 4px;
-    border-radius: 3px;
-    font-family: var(--font-mono);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .cal-day-add {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: transparent;
+    border: none;
+    color: var(--ink-dim);
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 300;
+    opacity: 0;
     cursor: pointer;
+    transition: opacity .15s;
+  }
+  .cal-day:hover .cal-day-add { opacity: 0.35; }
+  .cal-day-add:hover { opacity: 1 !important; background: color-mix(in srgb, var(--magenta) 15%, transparent); }
+
+  .cal-day-thumbs {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    gap: 2px;
+    z-index: 2;
+  }
+  .cal-day-thumbs.count-1 { grid-template-columns: 1fr; }
+  .cal-day-thumbs.count-2 { grid-template-columns: 1fr 1fr; }
+  .cal-day-thumbs.count-3 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+  .cal-day-thumbs.count-3 .cal-day-thumb:first-child { grid-column: 1 / span 2; }
+  .cal-day-thumbs.count-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+  .cal-day-thumb {
+    position: relative;
+    overflow: hidden;
+    background: var(--card);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-dim);
+    font-family: var(--font-display);
+    font-size: 14px;
+    transition: transform .12s;
+  }
+  .cal-day-thumb:hover { transform: scale(1.02); z-index: 4; box-shadow: 0 4px 12px rgba(0,0,0,0.6); }
+  .cal-day-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cal-day-thumb .thumb-type {
+    position: absolute;
+    bottom: 3px;
+    right: 3px;
+    background: rgba(0,0,0,0.75);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 8.5px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 3px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    line-height: 1.3;
+  }
+  .cal-day-thumb .thumb-play {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--magenta) 90%, black);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px;
+    padding-left: 2px;
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+  .cal-day-thumb.more-badge {
+    background: color-mix(in srgb, var(--magenta) 60%, var(--bg-2));
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  /* ---------- POST PREVIEW MODAL ---------- */
+  .preview-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+  }
+  .preview-type-badge {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #0d0d0f;
+    background: var(--lime);
+    padding: 4px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .preview-date {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    text-transform: capitalize;
+  }
+  .preview-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+  .preview-split.vertical {
+    grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr);
+  }
+  .preview-media {
+    background: #08080a;
+    border-radius: 12px;
+    overflow: hidden;
+    aspect-ratio: 4/5;
+    position: relative;
+  }
+  .preview-split.vertical .preview-media { aspect-ratio: 9/16; }
+  .preview-media img,
+  .preview-media video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+  .preview-carousel {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+  .preview-slide {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity .2s;
+  }
+  .preview-slide.active { opacity: 1; }
+  .preview-slide img, .preview-slide video { width: 100%; height: 100%; object-fit: contain; }
+  .preview-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0,0,0,0.65);
+    color: #fff;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3;
+    transition: background .12s;
+  }
+  .preview-nav:hover { background: var(--magenta); }
+  .preview-nav.prev { left: 10px; }
+  .preview-nav.next { right: 10px; }
+  .preview-dots {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 5px;
+    z-index: 3;
+  }
+  .preview-dots span {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.35);
+    transition: background .12s;
+  }
+  .preview-dots span.on { background: #fff; }
+  .preview-info {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .preview-field label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent-soft);
+    margin-bottom: 8px;
+  }
+  .preview-copy {
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--ink);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .preview-copy.empty { color: var(--ink-dim); opacity: 0.55; font-style: italic; }
+  .preview-cta {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink);
+    background: color-mix(in srgb, var(--orange) 22%, transparent);
+    border: 1px solid color-mix(in srgb, var(--orange) 55%, transparent);
+    padding: 5px 12px;
+    border-radius: 999px;
+  }
+  .preview-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .preview-tags span {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--accent-soft);
+    background: color-mix(in srgb, var(--magenta) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--magenta) 30%, transparent);
+    padding: 3px 9px;
+    border-radius: 999px;
+  }
+  .preview-notes {
+    font-family: var(--font-body);
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--ink-dim);
+    padding: 10px 14px;
+    background: var(--bg);
+    border-left: 2px solid var(--warn);
+    border-radius: 4px;
+  }
+  @media (max-width: 720px) {
+    .preview-split, .preview-split.vertical { grid-template-columns: 1fr; }
   }
 
   /* ---------- MODAL ---------- */
@@ -1946,12 +2183,44 @@ function renderPostsCalendar(posts) {
         ${DOWS.map(d => `<div class="cal-dow">${d}</div>`).join('')}
         ${cells.map(c => c.empty
           ? `<div class="cal-day other-month"></div>`
-          : `<div class="cal-day ${c.isToday?'today':''}" onclick="openPostEditor(null,'${c.dateStr}')">
-              <div class="cal-day-num">${c.day}</div>
-              ${c.dayPosts.map(p => `<div class="cal-post-mini" onclick="event.stopPropagation();openPostEditor('${p.id}')" title="${esc(p.copy||'')}">${POST_TYPES[p.type].icon} ${POST_TYPES[p.type].label}</div>`).join('')}
-            </div>`
+          : renderCalendarDay(c)
         ).join('')}
       </div>
+    </div>
+  `;
+}
+
+function renderCalendarDay(c) {
+  const posts = c.dayPosts;
+  const n = posts.length;
+  const shown = posts.slice(0, 4);
+  const extra = n > 4 ? n - 3 : 0; // if >4 posts, show 3 + "+N" chip
+  const finalShown = extra ? shown.slice(0, 3) : shown;
+  const countClass = finalShown.length + (extra ? 1 : 0);
+
+  const thumbs = finalShown.map(p => {
+    ensureMediaField(p);
+    const t = POST_TYPES[p.type];
+    const m = p.media && p.media[0];
+    const thumbSrc = m ? (m.type === 'image' ? m.src : m.thumb) : null;
+    const inner = thumbSrc
+      ? `<img src="${thumbSrc}">${m.type === 'video' ? '<span class="thumb-play">▶</span>' : ''}`
+      : `<span>${t.icon}</span>`;
+    return `<div class="cal-day-thumb" onclick="event.stopPropagation();openPostPreview('${p.id}')" title="${esc(p.copy || t.label)}">
+      ${inner}
+      <span class="thumb-type">${t.icon}</span>
+    </div>`;
+  }).join('');
+
+  const moreBadge = extra
+    ? `<div class="cal-day-thumb more-badge" onclick="event.stopPropagation();openPostPreview('${posts[3].id}')" title="Ver más">+${extra}</div>`
+    : '';
+
+  return `
+    <div class="cal-day ${c.isToday?'today':''}">
+      <div class="cal-day-num">${c.day}</div>
+      ${n ? `<div class="cal-day-thumbs count-${countClass}">${thumbs}${moreBadge}</div>` : ''}
+      <button class="cal-day-add" onclick="openPostEditor(null,'${c.dateStr}')" title="Agregar post">+</button>
     </div>
   `;
 }
@@ -2153,6 +2422,88 @@ async function confirmDeletePlan(id) {
   if (state.currentPlan && state.currentPlan.id === id) goClient();
   else render();
   toast('Planificación eliminada');
+}
+
+/* ---- POST PREVIEW MODAL (view-only, con botón "Editar") ---- */
+let previewSlideIndex = 0;
+
+function openPostPreview(id) {
+  const p = ensureMediaField(state.posts.find(x => x.id === id));
+  if (!p) return;
+  const t = POST_TYPES[p.type];
+  const media = p.media || [];
+  previewSlideIndex = 0;
+
+  const slideHtml = (m) => {
+    if (!m) return '';
+    if (m.type === 'image') return `<img src="${m.src || ''}">`;
+    return `<video controls playsinline preload="metadata" poster="${m.thumb || ''}" data-video-id="${m.videoId}"></video>`;
+  };
+
+  const mediaHtml = media.length === 0
+    ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink-dim);font-family:var(--font-mono);font-size:12px;">Sin media</div>`
+    : media.length === 1
+      ? slideHtml(media[0])
+      : `<div class="preview-carousel">
+          ${media.map((m, i) => `<div class="preview-slide ${i===0?'active':''}">${slideHtml(m)}</div>`).join('')}
+          <button class="preview-nav prev" onclick="previewNav(-1, ${media.length})">‹</button>
+          <button class="preview-nav next" onclick="previewNav(1, ${media.length})">›</button>
+          <div class="preview-dots">${media.map((_, i) => `<span class="${i===0?'on':''}"></span>`).join('')}</div>
+        </div>`;
+
+  const dateStr = p.date
+    ? new Date(p.date + 'T00:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: '2-digit', month: 'long' })
+    : 'Sin fecha';
+
+  openModal(`
+    <div class="modal-header">
+      <div class="preview-header">
+        <div class="preview-type-badge">${t.icon} ${t.label}</div>
+        <div class="preview-date">${dateStr}${p.time ? ' · ' + p.time + ' hs' : ''}</div>
+      </div>
+      <button class="icon-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="preview-split ${t.vertical ? 'vertical' : ''}">
+        <div class="preview-media">${mediaHtml}</div>
+        <div class="preview-info">
+          ${p.cta ? `<div class="preview-field"><label>Call to action</label><div class="preview-cta">${esc(p.cta)}</div></div>` : ''}
+          <div class="preview-field">
+            <label>Copy</label>
+            <div class="preview-copy ${!p.copy ? 'empty' : ''}">${p.copy ? esc(p.copy).replace(/\n/g, '<br>') : 'Sin copy'}</div>
+          </div>
+          ${p.hashtags && p.hashtags.length ? `
+            <div class="preview-field">
+              <label>Hashtags</label>
+              <div class="preview-tags">${p.hashtags.map(h => `<span>#${esc(h)}</span>`).join('')}</div>
+            </div>
+          ` : ''}
+          ${p.notes ? `
+            <div class="preview-field">
+              <label>Notas internas</label>
+              <div class="preview-notes">${esc(p.notes)}</div>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn danger" onclick="confirmDeletePost('${p.id}', true)">Eliminar</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn ghost" onclick="closeModal()">Cerrar</button>
+        <button class="btn primary" onclick="closeModal();setTimeout(()=>openPostEditor('${p.id}'),50)">Editar</button>
+      </div>
+    </div>
+  `);
+  attachVideoSources();
+}
+
+function previewNav(dir, total) {
+  previewSlideIndex = (previewSlideIndex + dir + total) % total;
+  const slides = document.querySelectorAll('.preview-slide');
+  const dots = document.querySelectorAll('.preview-dots span');
+  slides.forEach((s, i) => s.classList.toggle('active', i === previewSlideIndex));
+  dots.forEach((d, i) => d.classList.toggle('on', i === previewSlideIndex));
 }
 
 /* ---- POST EDITOR ---- */
