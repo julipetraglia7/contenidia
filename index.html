@@ -1594,6 +1594,72 @@ const Store = {
     }
   },
 
+  /* Public share: crea un snapshot de la plani + posts + media en `shares/{shareId}`
+     que cualquiera con el link puede leer. Sube imágenes/thumbs a un subcollection
+     para no chocar con el límite de 1MB del doc principal. */
+  async createOrUpdateShare(plan, client, posts, existingShareId) {
+    if (!this.useCloud) throw new Error('Firebase no está activo');
+    const { doc, setDoc, deleteDoc, collection, getDocs } = this._fs;
+    const shareId = existingShareId || `${this.uid}_${uid()}`;
+    // Slim posts: keep metadata + media refs (mediaId + storageUrl for videos), strip heavy data
+    const slimPosts = posts.map(p => {
+      ensureMediaField(p);
+      return {
+        id: p.id, type: p.type, date: p.date || '', time: p.time || '',
+        copy: p.copy || '', cta: p.cta || '', hashtags: p.hashtags || [],
+        media: (p.media || []).map(m => {
+          const item = { type: m.type, mediaId: m.mediaId || ('m_' + uid()) };
+          if (m.storageUrl) item.storageUrl = m.storageUrl;
+          if (m.mimeType) item.mimeType = m.mimeType;
+          if (m.duration) item.duration = m.duration;
+          return item;
+        })
+      };
+    });
+    // Sync each heavy media (image src, video thumb) into shares/{shareId}/media/{mediaId}
+    for (let pi = 0; pi < posts.length; pi++) {
+      const orig = posts[pi];
+      const slim = slimPosts[pi];
+      for (let mi = 0; mi < (orig.media || []).length; mi++) {
+        const m = orig.media[mi];
+        const slimM = slim.media[mi];
+        const heavy = {};
+        if (m.type === 'image' && m.src) heavy.src = m.src;
+        if (m.type === 'video' && m.thumb) heavy.thumb = m.thumb;
+        if (Object.keys(heavy).length) {
+          await setDoc(doc(this.db, `shares/${shareId}/media/${slimM.mediaId}`), heavy);
+        }
+      }
+    }
+    // Main share doc
+    const shareDoc = {
+      ownerId: this.uid,
+      client: { name: client.name, color: client.color },
+      plan: { name: plan.name, month: plan.month, year: plan.year },
+      posts: slimPosts,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await setDoc(doc(this.db, `shares/${shareId}`), shareDoc);
+    return shareId;
+  },
+
+  async deleteShare(shareId) {
+    if (!this.useCloud || !shareId) return;
+    const { doc, deleteDoc, collection, getDocs } = this._fs;
+    try {
+      // Clean up media subcollection first
+      const mediaSnap = await getDocs(collection(this.db, `shares/${shareId}/media`));
+      for (const d of mediaSnap.docs) {
+        await deleteDoc(doc(this.db, `shares/${shareId}/media/${d.id}`));
+      }
+      await deleteDoc(doc(this.db, `shares/${shareId}`));
+    } catch(e) {
+      console.error('deleteShare:', e);
+      throw e;
+    }
+  },
+
   async loadAll() {
     if (this.useCloud) {
       const { collection, getDocs } = this._fs;
@@ -2029,7 +2095,8 @@ function render() {
         <button class="${state.postView==='list'?'active':''}" onclick="setPostView('list')">Lista</button>
         <button class="${state.postView==='calendar'?'active':''}" onclick="setPostView('calendar')">Calendario</button>
       </div>
-      <button class="btn ghost" onclick="exportPlanHTML()">Descargar para cliente</button>
+      ${Store.useCloud ? `<button class="btn" onclick="openShareDialog()">${state.currentPlan.shareId ? '🔗 Link cliente' : '🔗 Compartir con cliente'}</button>` : ''}
+      <button class="btn ghost" onclick="exportPlanHTML()">Descargar HTML</button>
       <button class="btn primary" onclick="openPostEditor()">+ Nuevo post</button>
     `;
     renderPlanView();
@@ -2458,6 +2525,7 @@ async function confirmDeletePlan(id) {
   state.plans = state.plans.filter(x => x.id !== id);
   state.posts = state.posts.filter(po => po.planId !== id);
   try {
+    if (p.shareId) await Store.deleteShare(p.shareId);
     await Store.deletePlan(id);
     for (let i = 0; i < posts.length; i++) await Store.deletePost(posts[i].id, perPostMediaIds[i]);
     for (const path of allStoragePaths) await Store.deleteVideoFromStorage(path);
@@ -3380,14 +3448,25 @@ async function migrateVideosToStorage() {
   }
   if (!pending.length) { toast('No hay videos pendientes'); return; }
 
-  const ok = confirm(`Vamos a subir ${pending.length} video(s) a Firebase Storage.\n\nSi tenés muchos videos grandes puede tardar unos minutos. ¿Continuar?`);
+  const totalMB = (pending.reduce((s, x) => s + (x.media.size || 0), 0) / 1024 / 1024).toFixed(0);
+  const ok = confirm(`Vamos a subir ${pending.length} video(s) a Firebase Storage (~${totalMB} MB en total).\n\nSi tenés muchos videos grandes puede tardar varios minutos. ¿Continuar?`);
   if (!ok) return;
 
   closeModal();
+  showProgress('Subiendo videos a la nube', `Preparando ${pending.length} video(s)…`);
+
   let done = 0, failed = 0;
+  const total = pending.length;
+  const startTime = Date.now();
+
   for (const { post, media } of pending) {
+    const idx = done + failed;
+    const percent = (idx / total) * 100;
+    const nameShort = (media.name || 'video').slice(0, 40);
+    const sizeMB = ((media.size || 0) / 1024 / 1024).toFixed(1);
+    updateProgress(percent, `Video ${idx + 1} de ${total}`, `${nameShort} — ${sizeMB} MB`);
+
     try {
-      toast(`Subiendo video ${done + 1} de ${pending.length}…`);
       const blob = await VideoDB.get(media.videoId);
       if (!blob) { failed++; continue; }
       const { url, path } = await Store.uploadVideoToStorage(media.videoId, blob, media.mimeType || blob.type || 'video/mp4');
@@ -3400,15 +3479,242 @@ async function migrateVideosToStorage() {
       failed++;
     }
   }
+
+  updateProgress(100, '¡Terminó!', `${done} OK · ${failed} fallaron`);
+  await new Promise(r => setTimeout(r, 600));
+  closeModal();
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
   const msg = failed
-    ? `Migración parcial: ${done} OK, ${failed} fallaron.\n\nSi fallaron todos, probablemente falta activar Firebase Storage en la consola.\nRevisá la consola del navegador (F12) para más detalle.`
-    : `✓ Se migraron ${done} video(s) a la nube.`;
+    ? `Migración parcial: ${done} OK, ${failed} fallaron en ${elapsed}s.\n\nSi fallaron todos, probablemente falta activar Firebase Storage en la consola.\nRevisá F12 → Console para más detalle.`
+    : `✓ Se migraron ${done} video(s) a la nube en ${elapsed}s.`;
   alert(msg);
   render();
 }
 
+/* ---- SHAREABLE LINK (link en vivo para cliente) ---- */
+function shareUrl(shareId) {
+  const base = location.origin + location.pathname;
+  return `${base}?share=${shareId}`;
+}
+
+function openShareDialog() {
+  const plan = state.currentPlan;
+  const existing = plan.shareId;
+  const url = existing ? shareUrl(existing) : '';
+  openModal(`
+    <div class="modal-header">
+      <div class="modal-title">Compartir con cliente</div>
+      <button class="icon-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="color:var(--ink-dim);line-height:1.6;font-size:13.5px;margin-bottom:22px;">
+        Generá un link para que tu cliente vea la planificación en vivo desde el navegador — sin descargar archivos ni instalar nada. Si cambiás algo después, actualizás el link y el cliente ve la última versión.
+      </div>
+
+      ${existing ? `
+        <div class="field">
+          <label>Link actual</label>
+          <div style="display:flex;gap:8px;">
+            <input class="input" id="shareUrlInput" readonly value="${esc(url)}" style="font-family:var(--font-mono);font-size:12px;" onclick="this.select()">
+            <button class="btn primary" onclick="copyShareUrl()">Copiar</button>
+          </div>
+          <div style="font-size:11px;color:var(--ink-dim);margin-top:8px;line-height:1.5;">
+            Es solo lectura: el cliente no puede editar nada.
+          </div>
+        </div>
+
+        <div class="field-row" style="margin-top:24px;">
+          <div class="field">
+            <button class="btn" style="width:100%;" onclick="regenerateShare()">↻ Actualizar contenido del link</button>
+            <div style="font-size:11px;color:var(--ink-dim);margin-top:6px;line-height:1.5;">
+              Push de los cambios recientes al link existente. La URL no cambia.
+            </div>
+          </div>
+          <div class="field">
+            <button class="btn danger" style="width:100%;" onclick="revokeShare()">🗑 Revocar link</button>
+            <div style="font-size:11px;color:var(--ink-dim);margin-top:6px;line-height:1.5;">
+              El link deja de funcionar para siempre.
+            </div>
+          </div>
+        </div>
+      ` : `
+        <div class="field">
+          <button class="btn primary" style="width:100%;padding:14px;" onclick="generateShareLink()">Generar link</button>
+        </div>
+        <div style="font-size:11.5px;color:var(--ink-dim);line-height:1.6;margin-top:12px;">
+          Al generar, se sube una copia liviana de la planificación (metadata + referencias a imágenes/videos) para que el cliente la vea online.
+        </div>
+      `}
+    </div>
+    <div class="modal-footer">
+      <div></div>
+      <button class="btn" onclick="closeModal()">Cerrar</button>
+    </div>
+  `);
+}
+
+function copyShareUrl() {
+  const input = document.getElementById('shareUrlInput');
+  navigator.clipboard.writeText(input.value).then(() => {
+    toast('Link copiado ✓');
+  }).catch(() => {
+    input.select();
+    document.execCommand('copy');
+    toast('Link copiado');
+  });
+}
+
+async function generateShareLink() {
+  const plan = state.currentPlan;
+  const client = state.currentClient;
+  const posts = state.posts.filter(p => p.planId === plan.id).map(ensureMediaField)
+    .sort((a,b) => (a.date||'z').localeCompare(b.date||'z'));
+
+  // Warn if there are videos not yet in Storage — those won't be visible to the client
+  const pendingVideos = posts.flatMap(p => p.media.filter(m => m.type === 'video' && !m.storageUrl));
+  if (pendingVideos.length) {
+    const ok = confirm(
+      `Atención: ${pendingVideos.length} video(s) de esta planificación no están en la nube todavía.\n\n` +
+      `El cliente NO va a poder verlos por el link. Migralos primero desde Ajustes ⚙ → "Migrar videos a la nube", y después volvé a generar el link.\n\n` +
+      `¿Generar link igualmente (sin los videos)?`
+    );
+    if (!ok) return;
+  }
+
+  try {
+    toast('Generando link…');
+    const shareId = await Store.createOrUpdateShare(plan, client, posts, plan.shareId);
+    plan.shareId = shareId;
+    await Store.savePlan(plan);
+    openShareDialog();
+    toast('Link generado ✓');
+  } catch(err) {
+    console.error(err);
+    alert('No se pudo generar el link:\n\n' + (err.message || err.code));
+  }
+}
+
+async function regenerateShare() {
+  const plan = state.currentPlan;
+  const client = state.currentClient;
+  const posts = state.posts.filter(p => p.planId === plan.id).map(ensureMediaField)
+    .sort((a,b) => (a.date||'z').localeCompare(b.date||'z'));
+  try {
+    toast('Actualizando link…');
+    await Store.createOrUpdateShare(plan, client, posts, plan.shareId);
+    toast('Contenido actualizado ✓ el link es el mismo');
+  } catch(err) {
+    console.error(err);
+    alert('No se pudo actualizar:\n\n' + (err.message || err.code));
+  }
+}
+
+async function revokeShare() {
+  const plan = state.currentPlan;
+  if (!plan.shareId) return;
+  if (!confirm('¿Revocar el link?\n\nEl cliente ya no va a poder abrirlo. Podés generar uno nuevo cuando quieras (será una URL distinta).')) return;
+  try {
+    await Store.deleteShare(plan.shareId);
+    plan.shareId = null;
+    await Store.savePlan(plan);
+    closeModal();
+    render();
+    toast('Link revocado');
+  } catch(err) {
+    console.error(err);
+    alert('No se pudo revocar:\n\n' + (err.message || err.code));
+  }
+}
+
+/* ---- PROGRESS MODAL (para migración de videos) ---- */
+function showProgress(title, sub) {
+  openModal(`
+    <div class="modal-header">
+      <div class="modal-title">${title}</div>
+    </div>
+    <div class="modal-body" style="text-align:center;padding:32px 24px;">
+      <div id="progLabel" style="font-family:var(--font-mono);font-size:12px;color:var(--ink-dim);margin-bottom:20px;letter-spacing:0.05em;">${sub || ''}</div>
+      <div style="height:8px;background:var(--bg);border-radius:999px;overflow:hidden;">
+        <div id="progBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--lime),var(--orange),var(--magenta));transition:width .3s;"></div>
+      </div>
+      <div id="progNote" style="font-size:11.5px;color:var(--ink-dim);margin-top:14px;line-height:1.5;">No cierres esta ventana hasta que termine.</div>
+    </div>
+  `);
+}
+function updateProgress(percent, label, note) {
+  const bar = document.getElementById('progBar');
+  const lbl = document.getElementById('progLabel');
+  const nt = document.getElementById('progNote');
+  if (bar) bar.style.width = Math.max(0, Math.min(100, percent)) + '%';
+  if (lbl && label) lbl.textContent = label;
+  if (nt && note) nt.textContent = note;
+}
+
+/* ---- CLIENT VIEWER (read-only, sin auth) ---- */
+async function initViewer(shareId) {
+  document.body.innerHTML = `
+    <div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0d0d0f;color:#f5f4ef;font-family:'Inter',sans-serif;gap:16px;">
+      <div style="font-family:'Syne',sans-serif;font-size:32px;font-weight:700;background:linear-gradient(120deg,#C6FF59,#FF5128,#DB3686);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Contenidia</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8a8a95;letter-spacing:0.1em;">CARGANDO PLANIFICACIÓN…</div>
+    </div>`;
+  try {
+    if (!FB_CONFIG.apiKey) throw new Error('Firebase no está configurado en esta app.');
+    const [
+      { initializeApp },
+      { getFirestore, doc, getDoc, collection, getDocs }
+    ] = await Promise.all([
+      import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js'),
+      import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'),
+    ]);
+    const app = initializeApp(FB_CONFIG);
+    const db = getFirestore(app);
+    const shareSnap = await getDoc(doc(db, `shares/${shareId}`));
+    if (!shareSnap.exists()) {
+      showViewerMessage('Este link ya no está disponible', 'El link puede haber sido revocado o la planificación fue eliminada. Contactá a quien te lo compartió.');
+      return;
+    }
+    const share = shareSnap.data();
+    // Hydrate media data from subcollection
+    const mediaSnap = await getDocs(collection(db, `shares/${shareId}/media`));
+    const mediaMap = new Map();
+    mediaSnap.docs.forEach(d => mediaMap.set(d.id, d.data()));
+    (share.posts || []).forEach(p => {
+      (p.media || []).forEach(m => {
+        if (m.mediaId && mediaMap.has(m.mediaId)) {
+          const md = mediaMap.get(m.mediaId);
+          if (md.src) m.src = md.src;
+          if (md.thumb) m.thumb = md.thumb;
+        }
+      });
+    });
+    // Reuse the exact same HTML generator as the "descargar HTML" flow — same look, same lightbox, same read-only guarantees
+    const html = buildClientHTML(share.client, share.plan, share.posts || []);
+    document.open();
+    document.write(html);
+    document.close();
+  } catch(err) {
+    console.error('Viewer error:', err);
+    showViewerMessage('Error al cargar la planificación', err.message || 'Intentá recargar la página en unos segundos.');
+  }
+}
+
+function showViewerMessage(title, sub) {
+  document.body.innerHTML = `
+    <div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0d0d0f;color:#f5f4ef;font-family:'Inter',sans-serif;gap:14px;padding:20px;text-align:center;">
+      <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:700;letter-spacing:-0.02em;">${title}</div>
+      <div style="color:#8a8a95;max-width:420px;line-height:1.6;">${sub}</div>
+    </div>`;
+}
+
 /* ---- BOOT ---- */
 (async () => {
+  const shareId = new URLSearchParams(location.search).get('share');
+  if (shareId) {
+    // Viewer mode — no auth, no editing, no state, no VideoDB
+    await initViewer(shareId);
+    return;
+  }
   await VideoDB.init();
   await Store.init();
   state.posts.forEach(ensureMediaField);
