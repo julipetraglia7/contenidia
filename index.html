@@ -1512,17 +1512,21 @@ const Store = {
     const [
       { initializeApp },
       { getFirestore, collection, doc, getDocs, setDoc, deleteDoc },
-      { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence }
+      { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence },
+      { getStorage, ref: storageRef, uploadBytes, getDownloadURL, deleteObject }
     ] = await Promise.all([
       import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js'),
       import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'),
       import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'),
+      import('https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js'),
     ]);
     const app = initializeApp(FB_CONFIG);
     this.auth = getAuth(app);
     this.db = getFirestore(app);
+    this.storage = getStorage(app);
     this._fs = { collection, doc, getDocs, setDoc, deleteDoc };
     this._authFns = { GoogleAuthProvider, signInWithPopup, signOut };
+    this._st = { storageRef, uploadBytes, getDownloadURL, deleteObject };
     await setPersistence(this.auth, browserLocalPersistence);
     // Wait for the initial auth state (may already have a session)
     await new Promise((resolve) => {
@@ -1564,6 +1568,30 @@ const Store = {
     state.clients = []; state.plans = []; state.posts = [];
     state.currentClient = null; state.currentPlan = null; state.view = 'home';
     showLoginScreen();
+  },
+
+  /* Firebase Storage: uploads video blobs so the exported HTML can reference a URL
+     instead of embedding megabytes of base64. */
+  async uploadVideoToStorage(videoId, blob, mimeType) {
+    if (!this.storage) throw new Error('Firebase Storage no configurado');
+    const { storageRef, uploadBytes, getDownloadURL } = this._st;
+    const ext = (mimeType && mimeType.split('/')[1]) || 'mp4';
+    const path = `users/${this.uid}/videos/${videoId}.${ext}`;
+    const ref = storageRef(this.storage, path);
+    await uploadBytes(ref, blob, { contentType: mimeType || 'video/mp4' });
+    const url = await getDownloadURL(ref);
+    return { url, path };
+  },
+
+  async deleteVideoFromStorage(path) {
+    if (!this.storage || !path) return;
+    try {
+      const { storageRef, deleteObject } = this._st;
+      await deleteObject(storageRef(this.storage, path));
+    } catch(e) {
+      // Missing object is OK; other errors we swallow silently to not block the delete flow
+      console.warn('deleteVideoFromStorage:', e.code || e.message);
+    }
   },
 
   async loadAll() {
@@ -1879,8 +1907,22 @@ async function processMediaFile(file) {
     }
     const { thumb, duration } = await extractVideoThumb(file);
     const videoId = 'v_' + uid();
+    // Keep a local copy in IndexedDB for instant playback while editing
     await VideoDB.put(videoId, file);
-    return { type: 'video', videoId, thumb, mimeType: file.type, name: file.name, size: file.size, duration };
+    const item = { type: 'video', videoId, thumb, mimeType: file.type, name: file.name, size: file.size, duration };
+    // Upload to Firebase Storage if we're on the cloud so the exported HTML can reference a URL
+    if (Store.useCloud && Store.storage) {
+      try {
+        toast('Subiendo video a la nube…');
+        const { url, path } = await Store.uploadVideoToStorage(videoId, file, file.type);
+        item.storageUrl = url;
+        item.storagePath = path;
+      } catch(e) {
+        console.error('Storage upload failed:', e);
+        toast('⚠ El video quedó local — activá Firebase Storage en la consola');
+      }
+    }
+    return item;
   } else if (file.type.startsWith('image/')) {
     const src = await fileToDataURL(file);
     return { type: 'image', src };
@@ -2402,11 +2444,12 @@ async function confirmDeletePlan(id) {
   const p = state.plans.find(x => x.id === id);
   const posts = state.posts.filter(po => po.planId === id);
   if (!confirm(`¿Eliminar "${p.name}"?\nSe borrarán ${posts.length} post(s).`)) return;
-  // Gather media IDs and clean up video blobs BEFORE mutating state
+  // Gather media IDs + storage paths and clean up video blobs BEFORE mutating state
   const perPostMediaIds = posts.map(po => {
     ensureMediaField(po);
     return (po.media || []).map(m => m.mediaId).filter(Boolean);
   });
+  const allStoragePaths = posts.flatMap(po => (po.media || []).map(m => m.storagePath).filter(Boolean));
   for (const po of posts) {
     for (const item of (po.media || [])) {
       if (item.type === 'video') await VideoDB.delete(item.videoId);
@@ -2417,6 +2460,7 @@ async function confirmDeletePlan(id) {
   try {
     await Store.deletePlan(id);
     for (let i = 0; i < posts.length; i++) await Store.deletePost(posts[i].id, perPostMediaIds[i]);
+    for (const path of allStoragePaths) await Store.deleteVideoFromStorage(path);
   } catch(err) {
     console.error('deletePlan cascade failed:', err);
     toast('Error al borrar algo en la nube — revisá la consola');
@@ -2439,6 +2483,7 @@ function openPostPreview(id) {
   const slideHtml = (m) => {
     if (!m) return '';
     if (m.type === 'image') return `<img src="${m.src || ''}">`;
+    if (m.storageUrl) return `<video controls playsinline preload="metadata" poster="${m.thumb || ''}" src="${m.storageUrl}"></video>`;
     return `<video controls playsinline preload="metadata" poster="${m.thumb || ''}" data-video-id="${m.videoId}"></video>`;
   };
 
@@ -2611,7 +2656,7 @@ function renderMediaEditor(p, t) {
     if (item.type === 'image') return `<img src="${item.src}">`;
     // video → render <video> with poster + controls; attach source async
     return `
-      <video controls playsinline preload="metadata" poster="${item.thumb || ''}" style="width:100%;height:100%;object-fit:cover;background:#000;" data-video-id="${item.videoId}"></video>
+      <video controls playsinline preload="metadata" poster="${item.thumb || ''}" style="width:100%;height:100%;object-fit:cover;background:#000;" ${item.storageUrl ? `src="${item.storageUrl}"` : `data-video-id="${item.videoId}"`}></video>
       <div class="video-badge">▶ VIDEO${item.duration ? ' · ' + formatDuration(item.duration) : ''}</div>
     `;
   };
@@ -2822,13 +2867,15 @@ async function confirmDeletePost(id, fromModal=false) {
   if (!confirm('¿Eliminar este post?')) return;
   const p = ensureMediaField(state.posts.find(x => x.id === id));
   const mediaIds = (p.media || []).map(m => m.mediaId).filter(Boolean);
-  // Clean up any video blobs from IndexedDB
+  const storagePaths = (p.media || []).map(m => m.storagePath).filter(Boolean);
+  // Clean up video blobs from IndexedDB
   for (const item of (p.media || [])) {
     if (item.type === 'video') await VideoDB.delete(item.videoId);
   }
   state.posts = state.posts.filter(x => x.id !== id);
   try {
     await Store.deletePost(id, mediaIds);
+    for (const path of storagePaths) await Store.deleteVideoFromStorage(path);
   } catch(err) {
     console.error('deletePost failed:', err);
     toast('Error al borrar en la nube — revisá la consola');
@@ -2861,23 +2908,38 @@ async function exportPlanHTML() {
     .map(ensureMediaField)
     .sort((a,b) => (a.date||'z').localeCompare(b.date||'z'));
 
-  // Resolve any video blobs → base64 data URLs (embebed in the HTML)
-  let videoBytes = 0;
-  const videoCount = posts.reduce((n, p) => n + p.media.filter(m => m.type==='video').length, 0);
-  if (videoCount) toast(`Embebiendo ${videoCount} video(s), aguantá un momento…`);
+  // Resolve videos: prefer Firebase Storage URL (streams from cloud → small file).
+  // Fall back to base64 embed only for videos that never made it to Storage.
+  let embeddedBytes = 0;
+  let localOnly = 0;
+  const videos = posts.flatMap(p => p.media.filter(m => m.type === 'video'));
+  const streamedCount = videos.filter(v => v.storageUrl).length;
+  const needsEmbedCount = videos.length - streamedCount;
+  if (videos.length) {
+    toast(streamedCount === videos.length
+      ? `Preparando ${videos.length} video(s) desde la nube…`
+      : `Preparando videos (${streamedCount} desde la nube, ${needsEmbedCount} embebidos)…`);
+  }
 
   const postsResolved = [];
   for (const p of posts) {
     const media = [];
     for (const m of p.media) {
       if (m.type === 'video') {
-        const blob = await VideoDB.get(m.videoId);
-        if (blob) {
-          videoBytes += blob.size;
-          const dataUrl = await blobToDataURL(blob);
-          media.push({ ...m, dataUrl });
+        if (m.storageUrl) {
+          // Stream from cloud — nothing to embed
+          media.push({ ...m });
         } else {
-          media.push({ ...m, dataUrl: null });
+          // Legacy video (only in IndexedDB) → embed as base64 fallback
+          const blob = await VideoDB.get(m.videoId);
+          if (blob) {
+            embeddedBytes += blob.size;
+            localOnly++;
+            const dataUrl = await blobToDataURL(blob);
+            media.push({ ...m, dataUrl });
+          } else {
+            media.push({ ...m, dataUrl: null });
+          }
         }
       } else {
         media.push(m);
@@ -2886,8 +2948,13 @@ async function exportPlanHTML() {
     postsResolved.push({ ...p, media });
   }
 
-  if (videoBytes > 100 * 1024 * 1024) {
-    if (!confirm(`El archivo va a pesar ~${(videoBytes/1024/1024).toFixed(0)} MB por los videos embebidos. ¿Continuar?\n\nTip: para archivos así de pesados quizás convenga usar WeTransfer o Drive.`)) return;
+  if (localOnly) {
+    const mb = (embeddedBytes / 1024 / 1024).toFixed(0);
+    const ok = confirm(
+      `Aviso: ${localOnly} video(s) todavía no están en la nube y se van a embeber en el archivo (~${mb} MB extra).\n\n` +
+      `Para archivos más livianos, andá a Ajustes → "Migrar videos a la nube" y volvé a exportar.\n\n¿Continuar de todas formas?`
+    );
+    if (!ok) return;
   }
 
   const html = buildClientHTML(client, plan, postsResolved);
@@ -2920,10 +2987,11 @@ function buildClientHTML(client, plan, posts) {
 
   const mediaTag = (m) => {
     if (m.type === 'image') return `<img src="${m.src}" alt="">`;
-    if (m.type === 'video' && m.dataUrl) {
-      return `<video controls playsinline preload="metadata" poster="${m.thumb||''}" src="${m.dataUrl}"></video>`;
+    if (m.type === 'video') {
+      const src = m.storageUrl || m.dataUrl;
+      if (src) return `<video controls playsinline preload="metadata" poster="${m.thumb||''}" src="${src}"></video>`;
+      return `<img src="${m.thumb||''}" alt=""><div class="play-overlay">▶</div>`;
     }
-    if (m.type === 'video') return `<img src="${m.thumb||''}" alt=""><div class="play-overlay">▶</div>`;
     return `<div class="no-img">Sin media</div>`;
   };
 
@@ -2944,7 +3012,7 @@ function buildClientHTML(client, plan, posts) {
             <button class="cnav next" onclick="event.stopPropagation();carouselNav(this,1)" aria-label="Siguiente">›</button>
             <div class="cdots">${media.map((_,i) => `<span class="${i===0?'on':''}"></span>`).join('')}</div>
           </div>`
-        : (isVideoFirst && !media[0].dataUrl
+        : (isVideoFirst
             ? `<img src="${media[0].thumb||''}" alt=""><div class="play-overlay">▶</div>`
             : mediaTag(media[0]));
     return `
@@ -3233,6 +3301,8 @@ function openSettings() {
         </div>
       </div>
 
+      ${Store.useCloud ? renderStorageMigrationSection() : ''}
+
       ${!Store.useCloud ? `
         <div class="field">
           <label>Sincronización en la nube</label>
@@ -3253,6 +3323,88 @@ function openSettings() {
       <button class="btn primary" onclick="closeModal()">Cerrar</button>
     </div>
   `);
+}
+
+/* ---- STORAGE MIGRATION (existing IDB videos → Firebase Storage) ---- */
+function countVideosPendingMigration() {
+  let count = 0;
+  for (const p of state.posts) {
+    ensureMediaField(p);
+    for (const m of (p.media || [])) {
+      if (m.type === 'video' && !m.storageUrl && m.videoId) count++;
+    }
+  }
+  return count;
+}
+
+function renderStorageMigrationSection() {
+  const pending = countVideosPendingMigration();
+  if (pending === 0) {
+    return `
+      <div class="field">
+        <label>Videos en la nube</label>
+        <div style="background:var(--bg);padding:14px;border-radius:8px;font-family:var(--font-mono);font-size:12.5px;line-height:1.6;color:var(--lime);">
+          ✓ Todos tus videos están en Firebase Storage
+        </div>
+        <div style="font-size:11.5px;color:var(--ink-dim);margin-top:8px;line-height:1.5;">
+          Los HTML que descargues para clientes van a pesar poco (los videos se streamean desde la nube).
+        </div>
+      </div>
+    `;
+  }
+  return `
+    <div class="field">
+      <label>Videos pendientes de migrar</label>
+      <div style="background:var(--bg);padding:14px;border-radius:8px;font-family:var(--font-mono);font-size:12.5px;line-height:1.6;">
+        ⚠ ${pending} video(s) están solo en este navegador
+      </div>
+      <div style="font-size:11.5px;color:var(--ink-dim);margin:8px 0 12px;line-height:1.5;">
+        Migralos a Firebase Storage para que los HTML que exportás pesen menos y los clientes puedan verlos sin problemas. Necesitás tener activado Storage en la consola de Firebase.
+      </div>
+      <button class="btn primary" onclick="migrateVideosToStorage()">Migrar ${pending} video(s) a la nube</button>
+    </div>
+  `;
+}
+
+async function migrateVideosToStorage() {
+  if (!Store.useCloud || !Store.storage) {
+    alert('Firebase Storage no está configurado.');
+    return;
+  }
+  const pending = [];
+  for (const p of state.posts) {
+    ensureMediaField(p);
+    for (const m of (p.media || [])) {
+      if (m.type === 'video' && !m.storageUrl && m.videoId) pending.push({ post: p, media: m });
+    }
+  }
+  if (!pending.length) { toast('No hay videos pendientes'); return; }
+
+  const ok = confirm(`Vamos a subir ${pending.length} video(s) a Firebase Storage.\n\nSi tenés muchos videos grandes puede tardar unos minutos. ¿Continuar?`);
+  if (!ok) return;
+
+  closeModal();
+  let done = 0, failed = 0;
+  for (const { post, media } of pending) {
+    try {
+      toast(`Subiendo video ${done + 1} de ${pending.length}…`);
+      const blob = await VideoDB.get(media.videoId);
+      if (!blob) { failed++; continue; }
+      const { url, path } = await Store.uploadVideoToStorage(media.videoId, blob, media.mimeType || blob.type || 'video/mp4');
+      media.storageUrl = url;
+      media.storagePath = path;
+      await Store.savePost(post);
+      done++;
+    } catch(err) {
+      console.error('Migration failed for videoId', media.videoId, err);
+      failed++;
+    }
+  }
+  const msg = failed
+    ? `Migración parcial: ${done} OK, ${failed} fallaron.\n\nSi fallaron todos, probablemente falta activar Firebase Storage en la consola.\nRevisá la consola del navegador (F12) para más detalle.`
+    : `✓ Se migraron ${done} video(s) a la nube.`;
+  alert(msg);
+  render();
 }
 
 /* ---- BOOT ---- */
