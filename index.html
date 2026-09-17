@@ -2039,7 +2039,7 @@ function parseVideoUrl(url) {
     provider: 'Vimeo',
     externalId: m[1],
     embedUrl: `https://player.vimeo.com/video/${m[1]}`,
-    thumbUrl: null,
+    thumbUrl: `https://vumbnail.com/${m[1]}.jpg`,
   };
   // Google Drive
   m = url.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?id=)([A-Za-z0-9_-]{20,})/);
@@ -2047,7 +2047,7 @@ function parseVideoUrl(url) {
     provider: 'Drive',
     externalId: m[1],
     embedUrl: `https://drive.google.com/file/d/${m[1]}/preview`,
-    thumbUrl: null,
+    thumbUrl: `https://drive.google.com/thumbnail?id=${m[1]}&sz=w1000`,
   };
   return null;
 }
@@ -2276,11 +2276,11 @@ function renderPostsGrid(posts) {
 function gridCell(p, vertical=false) {
   ensureMediaField(p);
   const m = p.media && p.media[0];
-  const thumbSrc = m ? (m.type === 'image' ? m.src : m.thumb) : null;
-  const hasVideoLink = !!parseVideoUrl(p.videoUrl);
-  const showsPlay = (m && m.type === 'video') || hasVideoLink;
+  const parsed = parseVideoUrl(p.videoUrl);
+  const thumbSrc = (m ? (m.type === 'image' ? m.src : m.thumb) : null) || (parsed ? parsed.thumbUrl : null);
+  const showsPlay = (m && m.type === 'video') || !!parsed;
   const inner = thumbSrc
-    ? `<img src="${thumbSrc}">${showsPlay ? '<span class="play-overlay">▶</span>' : ''}`
+    ? `<img src="${thumbSrc}" referrerpolicy="no-referrer" onerror="this.style.display='none'">${showsPlay ? '<span class="play-overlay">▶</span>' : ''}`
     : `<span class="empty-cell">Sin media</span>`;
   const style = vertical ? 'style="aspect-ratio:9/16;"' : '';
   return `
@@ -2300,9 +2300,11 @@ function renderPostsList(posts) {
         ensureMediaField(p);
         const t = POST_TYPES[p.type];
         const m = p.media && p.media[0];
-        const thumbSrc = m ? (m.type === 'image' ? m.src : m.thumb) : null;
+        const parsed = parseVideoUrl(p.videoUrl);
+        const thumbSrc = (m ? (m.type === 'image' ? m.src : m.thumb) : null) || (parsed ? parsed.thumbUrl : null);
+        const showsPlay = (m && m.type === 'video') || !!parsed;
         const thumb = thumbSrc
-          ? `<img src="${thumbSrc}">${m.type==='video' ? '<span class="play-overlay small">▶</span>' : ''}`
+          ? `<img src="${thumbSrc}" referrerpolicy="no-referrer" onerror="this.style.display='none'">${showsPlay ? '<span class="play-overlay small">▶</span>' : ''}`
           : `<span>${t.icon}</span>`;
         return `
           <div class="post-row" onclick="openPostEditor('${p.id}')">
@@ -2370,9 +2372,11 @@ function renderCalendarDay(c) {
     ensureMediaField(p);
     const t = POST_TYPES[p.type];
     const m = p.media && p.media[0];
-    const thumbSrc = m ? (m.type === 'image' ? m.src : m.thumb) : null;
+    const parsed = parseVideoUrl(p.videoUrl);
+    const thumbSrc = (m ? (m.type === 'image' ? m.src : m.thumb) : null) || (parsed ? parsed.thumbUrl : null);
+    const showsPlay = (m && m.type === 'video') || !!parsed;
     const inner = thumbSrc
-      ? `<img src="${thumbSrc}">${m.type === 'video' ? '<span class="thumb-play">▶</span>' : ''}`
+      ? `<img src="${thumbSrc}" referrerpolicy="no-referrer" onerror="this.style.display='none'">${showsPlay ? '<span class="thumb-play">▶</span>' : ''}`
       : `<span>${t.icon}</span>`;
     return `<div class="cal-day-thumb" onclick="event.stopPropagation();openPostPreview('${p.id}')" title="${esc(p.copy || t.label)}">
       ${inner}
@@ -3214,7 +3218,9 @@ function buildClientHTML(client, plan, posts) {
     const isVideoFirst = media[0] && media[0].type === 'video';
     const showsPlay = isVideoFirst || parsed;
     const mediaHtml = media.length === 0
-      ? `<div class="no-img">Sin media</div>`
+      ? (parsed
+          ? `<img src="${parsed.thumbUrl}" alt="" referrerpolicy="no-referrer" onerror="this.style.display='none'"><div class="play-overlay">▶</div>`
+          : `<div class="no-img">Sin media</div>`)
       : t.multi && media.length > 1
         ? `<div class="carousel">
             ${media.map((m,i) => `<div class="slide ${i===0?'active':''}">${mediaTag(m)}</div>`).join('')}
@@ -3223,7 +3229,7 @@ function buildClientHTML(client, plan, posts) {
             <div class="cdots">${media.map((_,i) => `<span class="${i===0?'on':''}"></span>`).join('')}</div>
           </div>`
         : (showsPlay
-            ? `<img src="${(media[0] && media[0].thumb) || (media[0] && media[0].src) || ''}" alt=""><div class="play-overlay">▶</div>`
+            ? `<img src="${(media[0] && (media[0].thumb || media[0].src)) || (parsed ? parsed.thumbUrl : '')}" alt="" referrerpolicy="no-referrer" onerror="this.style.display='none'"><div class="play-overlay">▶</div>`
             : mediaTag(media[0]));
     return `
       <article class="post-card" data-post-id="${esc(p.id)}" onclick="openLightbox('${esc(p.id)}')">
