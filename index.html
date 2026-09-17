@@ -1578,9 +1578,31 @@ const Store = {
     const ext = (mimeType && mimeType.split('/')[1]) || 'mp4';
     const path = `users/${this.uid}/videos/${videoId}.${ext}`;
     const ref = storageRef(this.storage, path);
-    await uploadBytes(ref, blob, { contentType: mimeType || 'video/mp4' });
+    // Race against a generous timeout so a silent hang (SDK retrying) can't lock the UI forever
+    const sizeMB = blob.size / 1024 / 1024;
+    const timeoutMs = Math.max(60000, sizeMB * 20000); // 20s per MB, min 60s
+    const uploadPromise = uploadBytes(ref, blob, { contentType: mimeType || 'video/mp4' });
+    await Promise.race([
+      uploadPromise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout (${Math.round(timeoutMs/1000)}s) — probablemente Storage no está activado o las reglas bloquean la subida`)), timeoutMs)),
+    ]);
     const url = await getDownloadURL(ref);
     return { url, path };
+  },
+
+  /* Quick preflight: try uploading a tiny 1-byte blob to catch config issues fast */
+  async testStorageAccess() {
+    if (!this.storage) throw new Error('Firebase Storage no está inicializado');
+    const { storageRef, uploadBytes, deleteObject } = this._st;
+    const testPath = `users/${this.uid}/videos/__preflight_${Date.now()}.bin`;
+    const ref = storageRef(this.storage, testPath);
+    const tiny = new Blob([new Uint8Array([0])], { type: 'application/octet-stream' });
+    await Promise.race([
+      uploadBytes(ref, tiny),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('preflight timeout')), 15000)),
+    ]);
+    try { await deleteObject(ref); } catch(_) {}
+    return true;
   },
 
   async deleteVideoFromStorage(path) {
@@ -1607,6 +1629,7 @@ const Store = {
       return {
         id: p.id, type: p.type, date: p.date || '', time: p.time || '',
         copy: p.copy || '', cta: p.cta || '', hashtags: p.hashtags || [],
+        videoUrl: p.videoUrl || '',
         media: (p.media || []).map(m => {
           const item = { type: m.type, mediaId: m.mediaId || ('m_' + uid()) };
           if (m.storageUrl) item.storageUrl = m.storageUrl;
@@ -1997,6 +2020,38 @@ async function processMediaFile(file) {
   }
 }
 
+/* Parse a Drive/YouTube/Vimeo URL into an embed URL for iframe playback.
+   Returns null if the URL isn't recognized. */
+function parseVideoUrl(url) {
+  if (!url) return null;
+  url = url.trim();
+  // YouTube (long, short, embed, shorts)
+  let m = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
+  if (m) return {
+    provider: 'YouTube',
+    externalId: m[1],
+    embedUrl: `https://www.youtube.com/embed/${m[1]}`,
+    thumbUrl: `https://img.youtube.com/vi/${m[1]}/hqdefault.jpg`,
+  };
+  // Vimeo
+  m = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+  if (m) return {
+    provider: 'Vimeo',
+    externalId: m[1],
+    embedUrl: `https://player.vimeo.com/video/${m[1]}`,
+    thumbUrl: null,
+  };
+  // Google Drive
+  m = url.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?id=)([A-Za-z0-9_-]{20,})/);
+  if (m) return {
+    provider: 'Drive',
+    externalId: m[1],
+    embedUrl: `https://drive.google.com/file/d/${m[1]}/preview`,
+    thumbUrl: null,
+  };
+  return null;
+}
+
 /* Migrate old post schema (images[]) → media[] */
 function ensureMediaField(post) {
   if (!post.media) {
@@ -2222,8 +2277,10 @@ function gridCell(p, vertical=false) {
   ensureMediaField(p);
   const m = p.media && p.media[0];
   const thumbSrc = m ? (m.type === 'image' ? m.src : m.thumb) : null;
+  const hasVideoLink = !!parseVideoUrl(p.videoUrl);
+  const showsPlay = (m && m.type === 'video') || hasVideoLink;
   const inner = thumbSrc
-    ? `<img src="${thumbSrc}">${m.type==='video' ? '<span class="play-overlay">▶</span>' : ''}`
+    ? `<img src="${thumbSrc}">${showsPlay ? '<span class="play-overlay">▶</span>' : ''}`
     : `<span class="empty-cell">Sin media</span>`;
   const style = vertical ? 'style="aspect-ratio:9/16;"' : '';
   return `
@@ -2555,16 +2612,21 @@ function openPostPreview(id) {
     return `<video controls playsinline preload="metadata" poster="${m.thumb || ''}" data-video-id="${m.videoId}"></video>`;
   };
 
-  const mediaHtml = media.length === 0
-    ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink-dim);font-family:var(--font-mono);font-size:12px;">Sin media</div>`
-    : media.length === 1
-      ? slideHtml(media[0])
-      : `<div class="preview-carousel">
-          ${media.map((m, i) => `<div class="preview-slide ${i===0?'active':''}">${slideHtml(m)}</div>`).join('')}
-          <button class="preview-nav prev" onclick="previewNav(-1, ${media.length})">‹</button>
-          <button class="preview-nav next" onclick="previewNav(1, ${media.length})">›</button>
-          <div class="preview-dots">${media.map((_, i) => `<span class="${i===0?'on':''}"></span>`).join('')}</div>
-        </div>`;
+  // If the post has an external video link (Drive/YouTube/Vimeo), the lightbox shows the iframe player.
+  // The cover images / carousel are still visible in the grid view.
+  const parsedVideo = parseVideoUrl(p.videoUrl);
+  const mediaHtml = parsedVideo
+    ? `<iframe src="${parsedVideo.embedUrl}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen style="width:100%;height:100%;border:none;background:#000;"></iframe>`
+    : media.length === 0
+      ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink-dim);font-family:var(--font-mono);font-size:12px;">Sin media</div>`
+      : media.length === 1
+        ? slideHtml(media[0])
+        : `<div class="preview-carousel">
+            ${media.map((m, i) => `<div class="preview-slide ${i===0?'active':''}">${slideHtml(m)}</div>`).join('')}
+            <button class="preview-nav prev" onclick="previewNav(-1, ${media.length})">‹</button>
+            <button class="preview-nav next" onclick="previewNav(1, ${media.length})">›</button>
+            <div class="preview-dots">${media.map((_, i) => `<span class="${i===0?'on':''}"></span>`).join('')}</div>
+          </div>`;
 
   const dateStr = p.date
     ? new Date(p.date + 'T00:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: '2-digit', month: 'long' })
@@ -2691,6 +2753,12 @@ function renderPostEditor() {
               <label>Notas internas</label>
               <input class="input" id="pNotes" value="${esc(p.notes)}" placeholder="Solo para vos">
             </div>
+          </div>
+
+          <div class="field">
+            <label>Link del video (Drive / YouTube / Vimeo) — opcional</label>
+            <input class="input" id="pVideoUrl" value="${esc(p.videoUrl || '')}" placeholder="https://drive.google.com/file/d/... o https://youtu.be/..." oninput="updateVideoUrlPreview()">
+            <div id="videoUrlPreview" style="margin-top:8px;font-family:var(--font-mono);font-size:11px;color:var(--ink-dim);line-height:1.5;"></div>
           </div>
         </div>
       </div>
@@ -2877,6 +2945,19 @@ function captureFormInputs() {
   if (g('pCopy')) editingPost.copy = g('pCopy').value;
   if (g('pCta'))  editingPost.cta  = g('pCta').value;
   if (g('pNotes')) editingPost.notes = g('pNotes').value;
+  if (g('pVideoUrl')) editingPost.videoUrl = g('pVideoUrl').value.trim();
+}
+
+function updateVideoUrlPreview() {
+  const url = document.getElementById('pVideoUrl').value.trim();
+  const preview = document.getElementById('videoUrlPreview');
+  if (!url) { preview.innerHTML = ''; return; }
+  const parsed = parseVideoUrl(url);
+  if (parsed) {
+    preview.innerHTML = `<span style="color:var(--lime);">✓ Detectado: ${parsed.provider}</span> — el cliente va a poder reproducirlo desde el link.`;
+  } else {
+    preview.innerHTML = `<span style="color:var(--warn);">⚠ Link no reconocido.</span> Aceptamos links de <strong>Google Drive</strong> (con permiso "cualquiera con el link"), <strong>YouTube</strong> o <strong>Vimeo</strong>.`;
+  }
 }
 
 async function savePost() {
@@ -3048,10 +3129,15 @@ function blobToDataURL(blob) {
 
 function buildClientHTML(client, plan, posts) {
   // Meta only (no heavy media) for the lightbox. Media lives in the DOM.
-  const metaPayload = posts.map(p => ({
-    id: p.id, type: p.type, date: p.date, time: p.time,
-    copy: p.copy, cta: p.cta, hashtags: p.hashtags || []
-  }));
+  const metaPayload = posts.map(p => {
+    const parsed = parseVideoUrl(p.videoUrl);
+    return {
+      id: p.id, type: p.type, date: p.date, time: p.time,
+      copy: p.copy, cta: p.cta, hashtags: p.hashtags || [],
+      videoEmbedUrl: parsed ? parsed.embedUrl : null,
+      videoProvider: parsed ? parsed.provider : null,
+    };
+  });
 
   const mediaTag = (m) => {
     if (m.type === 'image') return `<img src="${m.src}" alt="">`;
@@ -3070,7 +3156,9 @@ function buildClientHTML(client, plan, posts) {
   const postCard = (p) => {
     const t = POST_TYPES[p.type];
     const media = p.media || [];
+    const parsed = parseVideoUrl(p.videoUrl);
     const isVideoFirst = media[0] && media[0].type === 'video';
+    const showsPlay = isVideoFirst || parsed;
     const mediaHtml = media.length === 0
       ? `<div class="no-img">Sin media</div>`
       : t.multi && media.length > 1
@@ -3080,14 +3168,15 @@ function buildClientHTML(client, plan, posts) {
             <button class="cnav next" onclick="event.stopPropagation();carouselNav(this,1)" aria-label="Siguiente">›</button>
             <div class="cdots">${media.map((_,i) => `<span class="${i===0?'on':''}"></span>`).join('')}</div>
           </div>`
-        : (isVideoFirst
-            ? `<img src="${media[0].thumb||''}" alt=""><div class="play-overlay">▶</div>`
+        : (showsPlay
+            ? `<img src="${(media[0] && media[0].thumb) || (media[0] && media[0].src) || ''}" alt=""><div class="play-overlay">▶</div>`
             : mediaTag(media[0]));
     return `
       <article class="post-card" data-post-id="${esc(p.id)}" onclick="openLightbox('${esc(p.id)}')">
         <div class="post-media ${t.vertical?'vertical':''}">
           ${mediaHtml}
           <div class="type-pill">${t.icon} ${t.label}${t.multi && media.length>1 ? ' · '+media.length : ''}</div>
+          ${parsed ? `<div class="video-pill">▶ ${parsed.provider}</div>` : ''}
         </div>
         <div class="post-body">
           <div class="post-header">
@@ -3151,6 +3240,7 @@ function buildClientHTML(client, plan, posts) {
   .post-media video { object-fit: contain; }
   .no-img { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color: var(--ink-dim); font-family: var(--font-mono); font-size: 12px; }
   .type-pill { position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.75); color: var(--ink); font-family: var(--font-mono); font-size: 10.5px; padding: 5px 10px; border-radius: 999px; letter-spacing: 0.05em; text-transform: uppercase; z-index: 2; }
+  .video-pill { position: absolute; top: 12px; right: 12px; background: #DB3686; color: #fff; font-family: var(--font-mono); font-size: 10px; font-weight: 600; padding: 4px 9px; border-radius: 999px; letter-spacing: 0.05em; z-index: 2; }
   .post-body { padding: 14px 14px 16px; display: flex; flex-direction: column; gap: 9px; }
   .post-header { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
   .post-date { font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: 0.05em; color: var(--accent); text-transform: uppercase; }
@@ -3191,6 +3281,7 @@ function buildClientHTML(client, plan, posts) {
   .lb-media { background: #08080a; border-radius: 12px; overflow: hidden; aspect-ratio: 4/5; position: relative; width: 100%; }
   .lb-body.vertical .lb-media { aspect-ratio: 9/16; }
   .lb-media img, .lb-media video, .lb-media .carousel > .slide img, .lb-media .carousel > .slide video { width: 100%; height: 100%; object-fit: contain !important; display: block; background: #000; }
+  .lb-media iframe { width: 100%; height: 100%; border: none; background: #000; display: block; }
   .lb-media .play-overlay { display: none; }  /* hide the "play" thumb overlay on real playable videos */
   .lb-slide { position: absolute; inset: 0; opacity: 0; transition: opacity .2s; }
   .lb-slide.active { opacity: 1; }
@@ -3275,11 +3366,6 @@ function openLightbox(id) {
   const t = PT[meta.type];
   lbSlideIdx = 0;
 
-  // Clone the media area from the card so we reuse the already-loaded images/videos
-  const cardMedia = card.querySelector('.post-media');
-  const clonedMedia = cardMedia.cloneNode(true);
-  const pill = clonedMedia.querySelector('.type-pill'); if (pill) pill.remove();
-
   const dateStr = meta.date
     ? new Date(meta.date+'T00:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'2-digit',month:'long'})
     : 'Sin fecha';
@@ -3300,8 +3386,21 @@ function openLightbox(id) {
     '</div>';
 
   const slot = inner.querySelector('.lb-media-slot');
-  clonedMedia.classList.add('lb-media');
-  slot.replaceWith(clonedMedia);
+  if (meta.videoEmbedUrl) {
+    // Replace slot with an iframe player for the external video (Drive/YouTube/Vimeo)
+    const wrap = document.createElement('div');
+    wrap.className = 'lb-media' + (t.vertical ? ' vertical' : '');
+    wrap.innerHTML = '<iframe src="' + meta.videoEmbedUrl + '" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen style="width:100%;height:100%;border:none;background:#000;"></iframe>';
+    slot.replaceWith(wrap);
+  } else {
+    // Clone the media from the feed card (already loaded, no duplication)
+    const cardMedia = card.querySelector('.post-media');
+    const clonedMedia = cardMedia.cloneNode(true);
+    const pill = clonedMedia.querySelector('.type-pill'); if (pill) pill.remove();
+    const vpill = clonedMedia.querySelector('.video-pill'); if (vpill) vpill.remove();
+    clonedMedia.classList.add('lb-media');
+    slot.replaceWith(clonedMedia);
+  }
 
   document.getElementById('lightbox').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -3311,6 +3410,8 @@ function closeLightbox() {
   document.getElementById('lightbox').classList.remove('open');
   document.body.style.overflow = '';
   document.querySelectorAll('#lbInner video').forEach(v => v.pause());
+  // Reset any playing iframe by re-setting its src (stops YouTube/Drive playback)
+  document.querySelectorAll('#lbInner iframe').forEach(f => { const s = f.src; f.src = ''; f.src = s; });
 }
 
 document.addEventListener('keydown', e => {
@@ -3406,30 +3507,14 @@ function countVideosPendingMigration() {
 }
 
 function renderStorageMigrationSection() {
-  const pending = countVideosPendingMigration();
-  if (pending === 0) {
-    return `
-      <div class="field">
-        <label>Videos en la nube</label>
-        <div style="background:var(--bg);padding:14px;border-radius:8px;font-family:var(--font-mono);font-size:12.5px;line-height:1.6;color:var(--lime);">
-          ✓ Todos tus videos están en Firebase Storage
-        </div>
-        <div style="font-size:11.5px;color:var(--ink-dim);margin-top:8px;line-height:1.5;">
-          Los HTML que descargues para clientes van a pesar poco (los videos se streamean desde la nube).
-        </div>
-      </div>
-    `;
-  }
   return `
     <div class="field">
-      <label>Videos pendientes de migrar</label>
-      <div style="background:var(--bg);padding:14px;border-radius:8px;font-family:var(--font-mono);font-size:12.5px;line-height:1.6;">
-        ⚠ ${pending} video(s) están solo en este navegador
+      <label>Videos y compartir con clientes</label>
+      <div style="background:var(--bg);padding:14px;border-radius:8px;font-size:12.5px;line-height:1.6;color:var(--ink-dim);">
+        Para que un cliente pueda <strong style="color:var(--ink);">reproducir un video</strong> desde el link compartido, subilo a <strong style="color:var(--ink);">Google Drive</strong> (con permiso "cualquiera con el link"), <strong style="color:var(--ink);">YouTube</strong> (público o no listado) o <strong style="color:var(--ink);">Vimeo</strong>, y pegá el link en el campo <em style="color:var(--lime);">"Link del video"</em> del editor del post.
+        <br><br>
+        Los archivos de video que subís desde tu compu quedan solo en este navegador — sirven para tu vista previa, pero el cliente no los puede ver (Firebase Storage requiere plan pago).
       </div>
-      <div style="font-size:11.5px;color:var(--ink-dim);margin:8px 0 12px;line-height:1.5;">
-        Migralos a Firebase Storage para que los HTML que exportás pesen menos y los clientes puedan verlos sin problemas. Necesitás tener activado Storage en la consola de Firebase.
-      </div>
-      <button class="btn primary" onclick="migrateVideosToStorage()">Migrar ${pending} video(s) a la nube</button>
     </div>
   `;
 }
@@ -3453,6 +3538,25 @@ async function migrateVideosToStorage() {
   if (!ok) return;
 
   closeModal();
+  showProgress('Verificando acceso a Firebase Storage…', 'Prueba rápida antes de empezar');
+
+  try {
+    await Store.testStorageAccess();
+  } catch(err) {
+    closeModal();
+    const code = err.code || err.message || '';
+    alert(
+      `No se puede subir a Firebase Storage.\n\nError: ${code}\n\n` +
+      `Causas más comunes:\n` +
+      `1) Firebase Storage NO está activado en la consola.\n` +
+      `   → https://console.firebase.google.com → Contenidia → Bases de datos y almacenamiento → Storage → Comenzar\n\n` +
+      `2) Las reglas de Storage bloquean escritura.\n` +
+      `   → Storage → Reglas → pegar las reglas que te pasé y Publicar\n\n` +
+      `Una vez activado, recargá con Ctrl+F5 y volvé a intentar.`
+    );
+    return;
+  }
+
   showProgress('Subiendo videos a la nube', `Preparando ${pending.length} video(s)…`);
 
   let done = 0, failed = 0;
@@ -3571,13 +3675,16 @@ async function generateShareLink() {
   const posts = state.posts.filter(p => p.planId === plan.id).map(ensureMediaField)
     .sort((a,b) => (a.date||'z').localeCompare(b.date||'z'));
 
-  // Warn if there are videos not yet in Storage — those won't be visible to the client
-  const pendingVideos = posts.flatMap(p => p.media.filter(m => m.type === 'video' && !m.storageUrl));
-  if (pendingVideos.length) {
+  // Warn about posts whose media is a video file (not a video link) — those won't play for the client.
+  const postsWithLocalVideoOnly = posts.filter(p =>
+    (p.media || []).some(m => m.type === 'video' && !m.storageUrl) && !parseVideoUrl(p.videoUrl)
+  );
+  if (postsWithLocalVideoOnly.length) {
     const ok = confirm(
-      `Atención: ${pendingVideos.length} video(s) de esta planificación no están en la nube todavía.\n\n` +
-      `El cliente NO va a poder verlos por el link. Migralos primero desde Ajustes ⚙ → "Migrar videos a la nube", y después volvé a generar el link.\n\n` +
-      `¿Generar link igualmente (sin los videos)?`
+      `Atención: ${postsWithLocalVideoOnly.length} post(s) tienen un archivo de video subido pero NO tienen link de video externo.\n\n` +
+      `El cliente NO va a poder reproducirlos por el link compartido.\n\n` +
+      `Para que se vean, editá cada post → pegá el link del video de Drive/YouTube en el campo "Link del video".\n\n` +
+      `¿Generar link igualmente (sin esos videos)?`
     );
     if (!ok) return;
   }
