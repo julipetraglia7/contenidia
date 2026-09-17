@@ -3194,6 +3194,7 @@ function buildClientHTML(client, plan, posts) {
       copy: p.copy, cta: p.cta, hashtags: p.hashtags || [],
       videoEmbedUrl: parsed ? parsed.embedUrl : null,
       videoProvider: parsed ? parsed.provider : null,
+      videoSourceUrl: parsed ? p.videoUrl : null,
     };
   });
 
@@ -3343,6 +3344,8 @@ function buildClientHTML(client, plan, posts) {
   .lb-media img, .lb-media video, .lb-media .carousel > .slide img, .lb-media .carousel > .slide video { width: 100%; height: 100%; object-fit: contain !important; display: block; background: #000; }
   .lb-media iframe { width: 100%; height: 100%; border: none; background: #000; display: block; }
   .lb-media .play-overlay { display: none; }  /* hide the "play" thumb overlay on real playable videos */
+  .lb-fallback-btn { position: absolute; top: 10px; right: 10px; z-index: 5; background: rgba(0,0,0,0.75); color: #fff; font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: 0.05em; padding: 6px 12px; border-radius: 999px; text-decoration: none; backdrop-filter: blur(4px); transition: background .15s; }
+  .lb-fallback-btn:hover { background: var(--accent); color: #0d0d0f; }
   .lb-slide { position: absolute; inset: 0; opacity: 0; transition: opacity .2s; }
   .lb-slide.active { opacity: 1; }
   .lb-slide img, .lb-slide video { width: 100%; height: 100%; object-fit: contain; }
@@ -3447,10 +3450,14 @@ function openLightbox(id) {
 
   const slot = inner.querySelector('.lb-media-slot');
   if (meta.videoEmbedUrl) {
-    // Replace slot with an iframe player for the external video (Drive/YouTube/Vimeo)
+    // Replace slot with an iframe player + always-visible fallback button
+    // (some browsers/origins block Drive iframes when opening the HTML locally)
     const wrap = document.createElement('div');
     wrap.className = 'lb-media' + (t.vertical ? ' vertical' : '');
-    wrap.innerHTML = '<iframe src="' + meta.videoEmbedUrl + '" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen style="width:100%;height:100%;border:none;background:#000;"></iframe>';
+    wrap.style.position = 'relative';
+    wrap.innerHTML =
+      '<iframe src="' + meta.videoEmbedUrl + '" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="no-referrer" style="width:100%;height:100%;border:none;background:#000;"></iframe>' +
+      '<a href="' + meta.videoSourceUrl + '" target="_blank" rel="noopener" class="lb-fallback-btn">↗ Abrir en ' + meta.videoProvider + '</a>';
     slot.replaceWith(wrap);
   } else {
     // Clone the media from the feed card (already loaded, no duplication)
