@@ -2782,6 +2782,8 @@ function renderMediaEditor(p, t) {
       ? 'Tocá para <strong>agregar imágenes o videos</strong><br>al carrusel'
       : 'Tocá para <strong>subir imagen o video</strong><br>formato 1:1 recomendado';
 
+  const parsedVideo = parseVideoUrl(editingPost.videoUrl);
+
   const renderMain = (item) => {
     if (!item) {
       return `
@@ -2790,7 +2792,6 @@ function renderMediaEditor(p, t) {
       `;
     }
     if (item.type === 'image') return `<img src="${item.src}">`;
-    // video → render <video> with poster + controls; attach source async
     return `
       <video controls playsinline preload="metadata" poster="${item.thumb || ''}" style="width:100%;height:100%;object-fit:cover;background:#000;" ${item.storageUrl ? `src="${item.storageUrl}"` : `data-video-id="${item.videoId}"`}></video>
       <div class="video-badge">▶ VIDEO${item.duration ? ' · ' + formatDuration(item.duration) : ''}</div>
@@ -2814,13 +2815,33 @@ function renderMediaEditor(p, t) {
         `).join('')}
         <div class="carousel-add" onclick="event.stopPropagation();triggerMediaUpload()">+</div>
       </div>
+      ${parsedVideo ? `
+        <div style="margin-top:10px;font-family:var(--font-mono);font-size:10.5px;color:var(--lime);letter-spacing:0.05em;">▶ VIDEO EMBED · ${parsedVideo.provider}</div>
+        <div class="media-drop ${t.vertical?'vertical':''}" style="padding:0;overflow:hidden;">
+          <iframe src="${parsedVideo.embedUrl}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen style="width:100%;height:100%;border:none;background:#000;display:block;"></iframe>
+        </div>
+      ` : ''}
       <input type="file" id="mediaInput" accept="${acceptTypes}" multiple style="display:none" onchange="handleMediaUpload(event)">
     `;
   } else {
     const has = p.media[0];
+    // If we have a valid video link and no cover image → show the iframe as the main preview
+    if (parsedVideo && !has) {
+      return `
+        <div class="media-drop ${t.vertical?'vertical':''}" style="padding:0;overflow:hidden;">
+          <iframe src="${parsedVideo.embedUrl}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen style="width:100%;height:100%;border:none;background:#000;display:block;"></iframe>
+          <div class="video-badge" style="background:#DB3686;">▶ ${parsedVideo.provider}</div>
+        </div>
+        <div class="media-actions">
+          <button onclick="triggerMediaUpload()">+ Subir portada (opcional)</button>
+        </div>
+        <input type="file" id="mediaInput" accept="${acceptTypes}" style="display:none" onchange="handleMediaUpload(event)">
+      `;
+    }
     return `
       <div class="media-drop ${t.vertical?'vertical':''}" onclick="${has && has.type==='video' ? '' : 'triggerMediaUpload()'}">
         ${renderMain(has)}
+        ${parsedVideo && has ? `<div class="video-badge" style="background:#DB3686;">▶ ${parsedVideo.provider}</div>` : ''}
       </div>
       ${has ? `
         <div class="media-actions">
@@ -2828,9 +2849,25 @@ function renderMediaEditor(p, t) {
           <button onclick="removeMediaItem(0)">Quitar</button>
         </div>
       ` : ''}
+      ${parsedVideo && has ? `
+        <div style="margin-top:12px;font-family:var(--font-mono);font-size:10.5px;color:var(--lime);letter-spacing:0.05em;margin-bottom:6px;">▶ VIDEO EMBED · ${parsedVideo.provider}</div>
+        <div class="media-drop ${t.vertical?'vertical':''}" style="padding:0;overflow:hidden;">
+          <iframe src="${parsedVideo.embedUrl}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen style="width:100%;height:100%;border:none;background:#000;display:block;"></iframe>
+        </div>
+      ` : ''}
       <input type="file" id="mediaInput" accept="${acceptTypes}" style="display:none" onchange="handleMediaUpload(event)">
     `;
   }
+}
+
+/* Re-render only the media area of the editor (called when video URL changes) */
+function refreshMediaArea() {
+  captureFormInputs();
+  const container = document.querySelector('.editor-media');
+  if (!container) return;
+  const t = POST_TYPES[editingPost.type];
+  container.innerHTML = renderMediaEditor(editingPost, t);
+  attachVideoSources();
 }
 
 function formatDuration(s) {
@@ -2948,16 +2985,33 @@ function captureFormInputs() {
   if (g('pVideoUrl')) editingPost.videoUrl = g('pVideoUrl').value.trim();
 }
 
+let _videoUrlDebounce = null;
 function updateVideoUrlPreview() {
   const url = document.getElementById('pVideoUrl').value.trim();
   const preview = document.getElementById('videoUrlPreview');
-  if (!url) { preview.innerHTML = ''; return; }
   const parsed = parseVideoUrl(url);
-  if (parsed) {
+  if (!url) {
+    preview.innerHTML = '';
+  } else if (parsed) {
     preview.innerHTML = `<span style="color:var(--lime);">✓ Detectado: ${parsed.provider}</span> — el cliente va a poder reproducirlo desde el link.`;
   } else {
     preview.innerHTML = `<span style="color:var(--warn);">⚠ Link no reconocido.</span> Aceptamos links de <strong>Google Drive</strong> (con permiso "cualquiera con el link"), <strong>YouTube</strong> o <strong>Vimeo</strong>.`;
   }
+  // Debounce the iframe render so it only fires once she stops typing/pasting
+  clearTimeout(_videoUrlDebounce);
+  _videoUrlDebounce = setTimeout(() => {
+    // Only refresh media area if parsed status changed the "should-render-iframe" outcome
+    const container = document.querySelector('.editor-media');
+    if (!container) return;
+    const currentlyHasIframe = !!container.querySelector('iframe');
+    if ((parsed && !currentlyHasIframe) || (!parsed && currentlyHasIframe)) {
+      refreshMediaArea();
+    } else if (parsed) {
+      // URL still valid but might have changed to a different video → refresh
+      const iframe = container.querySelector('iframe');
+      if (iframe && iframe.src !== parsed.embedUrl) refreshMediaArea();
+    }
+  }, 400);
 }
 
 async function savePost() {
