@@ -2259,16 +2259,28 @@ function renderPlanView() {
 function renderPostsGrid(posts) {
   const content = document.getElementById('content');
   const feedPosts = posts.filter(p => !POST_TYPES[p.type].vertical);
-  const verticalPosts = posts.filter(p => POST_TYPES[p.type].vertical);
+  const storyPosts = posts.filter(p => p.type === 'story');
+  const tiktokPosts = posts.filter(p => p.type === 'tiktok');
+
+  const labelStyle = 'max-width:640px;margin:32px auto 8px;font-family:var(--font-mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent-soft);';
+  const firstLabelStyle = labelStyle.replace('margin:32px auto 8px', 'margin:0 auto 8px');
 
   let html = '';
+  let first = true;
   if (feedPosts.length) {
-    html += `<div style="max-width:640px;margin:0 auto 8px;font-family:var(--font-mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent-soft);">Grid Feed</div>`;
+    html += `<div style="${first ? firstLabelStyle : labelStyle}">Grid Feed</div>`;
     html += `<div class="posts-grid">${feedPosts.map(p => gridCell(p)).join('')}</div>`;
+    first = false;
   }
-  if (verticalPosts.length) {
-    html += `<div style="max-width:640px;margin:32px auto 8px;font-family:var(--font-mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent-soft);">Stories / Reels / TikTok</div>`;
-    html += `<div class="posts-grid" style="grid-template-columns:repeat(4,1fr);">${verticalPosts.map(p => gridCell(p, true)).join('')}</div>`;
+  if (storyPosts.length) {
+    html += `<div style="${first ? firstLabelStyle : labelStyle}">Stories</div>`;
+    html += `<div class="posts-grid" style="grid-template-columns:repeat(4,1fr);">${storyPosts.map(p => gridCell(p, true)).join('')}</div>`;
+    first = false;
+  }
+  if (tiktokPosts.length) {
+    html += `<div style="${first ? firstLabelStyle : labelStyle}">TikTok</div>`;
+    html += `<div class="posts-grid" style="grid-template-columns:repeat(4,1fr);">${tiktokPosts.map(p => gridCell(p, true)).join('')}</div>`;
+    first = false;
   }
   content.innerHTML = html;
 }
@@ -3265,7 +3277,8 @@ function buildClientHTML(client, plan, posts) {
   };
 
   const feedPosts = posts.filter(p => !POST_TYPES[p.type].vertical);
-  const verticalPosts = posts.filter(p => POST_TYPES[p.type].vertical);
+  const storyPosts = posts.filter(p => p.type === 'story');
+  const tiktokPosts = posts.filter(p => p.type === 'tiktok');
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -3404,9 +3417,14 @@ function buildClientHTML(client, plan, posts) {
     <div class="grid">${feedPosts.map(postCard).join('')}</div>
   `:''}
 
-  ${verticalPosts.length ? `
-    <div class="section-label">Stories · TikTok</div>
-    <div class="grid">${verticalPosts.map(postCard).join('')}</div>
+  ${storyPosts.length ? `
+    <div class="section-label">Stories</div>
+    <div class="grid">${storyPosts.map(postCard).join('')}</div>
+  `:''}
+
+  ${tiktokPosts.length ? `
+    <div class="section-label">TikTok</div>
+    <div class="grid">${tiktokPosts.map(postCard).join('')}</div>
   `:''}
 
   ${!posts.length ? `<div style="text-align:center;padding:80px;color:var(--ink-dim);">Aún no hay contenido cargado.</div>` : ''}
